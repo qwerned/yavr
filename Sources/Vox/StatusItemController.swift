@@ -42,13 +42,12 @@ final class StatusItemController {
         // Быстрый переключатель языка диктовки — все языки модели
         let languageItem = NSMenuItem(title: "Язык диктовки", action: nil, keyEquivalent: "")
         let languageMenu = NSMenu()
-        for (index, lang) in Prefs.dictationLanguages.enumerated() {
+        for lang in Prefs.dictationLanguages {
             let item = NSMenuItem(
                 title: lang.name, action: #selector(AppDelegate.setLanguage(_:)),
                 keyEquivalent: "")
             item.representedObject = lang.code
             languageMenu.addItem(item)
-            if index == 1 { languageMenu.addItem(.separator()) }  // ru/en сверху
         }
         languageItem.submenu = languageMenu
         menu.addItem(languageItem)

@@ -48,13 +48,16 @@ struct RowLabel: View {
     }
 }
 
-/// Подстрока без иконки, выровненная под текст строк с иконками.
+/// Подстрока без иконки: невидимый плейсхолдер тех же размеров, что RowIcon,
+/// гарантирует выравнивание текста с обычными строками.
 struct SubRowLabel: View {
     let text: String
 
     var body: some View {
-        Text(text)
-            .padding(.leading, 33)
+        HStack(spacing: 9) {
+            Color.clear.frame(width: 24, height: 24)
+            Text(text)
+        }
     }
 }
 
@@ -87,7 +90,7 @@ struct GeneralTab: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(width: 210)
+                    .frame(width: 240)
                 } label: {
                     RowLabel(icon: "keyboard", color: .indigo, text: "Триггер")
                 }
@@ -100,7 +103,7 @@ struct GeneralTab: View {
                             Text("Правый Control (⌃)").tag("rightControl")
                         }
                         .labelsHidden()
-                        .frame(width: 210)
+                        .frame(width: 240)
                     } label: {
                         SubRowLabel(text: "Клавиша")
                     }
@@ -142,7 +145,7 @@ struct GeneralTab: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 210)
+                    .frame(width: 240)
                 } label: {
                     RowLabel(icon: "globe", color: .blue, text: "Язык диктовки")
                 }
@@ -190,7 +193,12 @@ struct GeneralTab: View {
             }
 
             Section("Модель и система") {
-                LabeledContent {
+                HStack {
+                    RowLabel(
+                        icon: "waveform", color: .indigo, text: "Модель распознавания",
+                        sub: modelInstalled
+                            ? "Parakeet v3 · установлена" : "Не установлена · 570 МБ")
+                    Spacer()
                     if downloading {
                         ProgressView(value: downloadProgress)
                             .frame(width: 120)
@@ -199,11 +207,6 @@ struct GeneralTab: View {
                             downloadModels()
                         }
                     }
-                } label: {
-                    RowLabel(
-                        icon: "waveform", color: .indigo, text: "Модель распознавания",
-                        sub: modelInstalled
-                            ? "Parakeet v3 · установлена" : "Не установлена · 570 МБ")
                 }
                 Toggle(isOn: $launchAtLogin) {
                     RowLabel(

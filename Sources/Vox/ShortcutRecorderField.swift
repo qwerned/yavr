@@ -14,7 +14,7 @@ struct ShortcutRecorderField: View {
         } label: {
             Text(recording ? "нажмите сочетание…" : display)
                 .font(.system(size: 12, weight: .medium))
-                .frame(minWidth: 110)
+                .frame(width: 150)
         }
         .onDisappear(perform: stopRecording)
     }
