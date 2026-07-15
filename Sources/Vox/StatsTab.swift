@@ -77,7 +77,7 @@ private struct StatCard: View {
             Text("\(totals.words)")
                 .font(.system(size: 24, weight: .bold))
                 .monospacedDigit()
-            Text("слов · \(savedLabel) печати")
+            Text("слов · сэкономлено \(savedLabel)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             HStack(spacing: 12) {
