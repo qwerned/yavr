@@ -156,7 +156,7 @@ struct DictionaryTab: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Термины")
                 .font(.headline)
-            Text("Каноническое написание, кириллические варианты «как слышится» — через запятую. Сохраняется по Enter или при уходе из поля.")
+            Text("Кликните по термину, чтобы настроить замены и акустический бустинг. Сохраняется по Enter или при уходе из поля.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -222,57 +222,101 @@ private struct TermRow: View {
     let onDelete: () -> Void
 
     @State private var variantsText: String = ""
-    @FocusState private var focused: Bool
+    @State private var aliasesText = ""
+    @State private var boostEnabled = false
+    @State private var threshold = 0.0  // 0 = авто
+    @State private var expanded = false
+    @FocusState private var replacementsFocused: Bool
+    @FocusState private var aliasesFocused: Bool
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(term.text)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .frame(width: 120, alignment: .leading)
-            TextField("как слышится, через запятую", text: $variantsText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .focused($focused)
-                .onSubmit(commit)
-                .onChange(of: focused) { _, isFocused in
-                    if !isFocused { commit() }
+        DisclosureGroup(isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                LabeledContent("Замены") {
+                    TextField("как слышится, через запятую", text: $variantsText)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($replacementsFocused)
+                        .onSubmit(commit)
                 }
-            Button {
-                onDelete()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                Toggle("Акустический бустинг", isOn: $boostEnabled)
+                    .onChange(of: boostEnabled) { _, _ in commit() }
+                if boostEnabled {
+                    LabeledContent("Алиасы") {
+                        TextField("как звучит, через запятую", text: $aliasesText)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($aliasesFocused)
+                            .onSubmit(commit)
+                    }
+                    Picker("Порог схожести", selection: $threshold) {
+                        Text("Авто").tag(0.0)
+                        Text("0.7").tag(0.7)
+                        Text("0.75").tag(0.75)
+                        Text("0.8 (строгий)").tag(0.8)
+                    }
+                    .onChange(of: threshold) { _, _ in commit() }
+                }
             }
-            .buttonStyle(.plain)
-            .help("Удалить термин")
+            .font(.system(size: 12))
+            .padding(.vertical, 6)
+            .padding(.leading, 4)
+            .onChange(of: replacementsFocused) { _, f in if !f { commit() } }
+            .onChange(of: aliasesFocused) { _, f in if !f { commit() } }
+        } label: {
+            HStack(spacing: 8) {
+                Text(term.text)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .frame(width: 120, alignment: .leading)
+                if boostEnabled {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tint)
+                        .help("Бустинг включён")
+                }
+                Text(summary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Удалить термин")
+            }
         }
-        .onAppear {
-            let all = (term.replacements ?? [])
-            variantsText = all.joined(separator: ", ")
-        }
+        .onAppear(perform: load)
+    }
+
+    private var summary: String {
+        let repl = variantsText.isEmpty ? "без замен" : variantsText
+        return repl
+    }
+
+    private func load() {
+        variantsText = (term.replacements ?? []).joined(separator: ", ")
+        aliasesText = (term.aliases ?? []).joined(separator: ", ")
+        boostEnabled = !(term.aliases ?? []).isEmpty
+        threshold = term.minSimilarity.map { Double($0) } ?? 0.0
+    }
+
+    private func parse(_ text: String) -> [String] {
+        text.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     private func commit() {
-        let variants = variantsText
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        // Варианты идут и в замены, и в акустические алиасы
+        let aliases = boostEnabled ? parse(aliasesText) : []
         onUpdate(
             GlossaryTerm(
                 text: term.text,
-                aliases: mergedAliases(with: variants),
-                minSimilarity: term.minSimilarity,
-                replacements: variants))
-    }
-
-    private func mergedAliases(with variants: [String]) -> [String] {
-        var result = term.aliases ?? []
-        for variant in variants where !result.contains(variant) {
-            result.append(variant)
-        }
-        return result
+                aliases: aliases,
+                minSimilarity: threshold == 0 ? nil : Float(threshold),
+                replacements: parse(variantsText)))
     }
 }
 
