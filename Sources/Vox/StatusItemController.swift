@@ -28,8 +28,7 @@ final class StatusItemController {
     private let copyLastItem = NSMenuItem(
         title: "Скопировать последний результат", action: #selector(AppDelegate.copyLastResult),
         keyEquivalent: "c")
-    private var russianItem: NSMenuItem?
-    private var englishItem: NSMenuItem?
+    private var languageMenu: NSMenu?
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -40,19 +39,20 @@ final class StatusItemController {
         menu.addItem(copyLastItem)
         menu.addItem(.separator())
 
-        // Быстрый переключатель языка диктовки
+        // Быстрый переключатель языка диктовки — все языки модели
         let languageItem = NSMenuItem(title: "Язык диктовки", action: nil, keyEquivalent: "")
         let languageMenu = NSMenu()
-        let russianItem = NSMenuItem(
-            title: "Русский", action: #selector(AppDelegate.setLanguageRussian), keyEquivalent: "")
-        let englishItem = NSMenuItem(
-            title: "English", action: #selector(AppDelegate.setLanguageEnglish), keyEquivalent: "")
-        languageMenu.addItem(russianItem)
-        languageMenu.addItem(englishItem)
+        for (index, lang) in Prefs.dictationLanguages.enumerated() {
+            let item = NSMenuItem(
+                title: lang.name, action: #selector(AppDelegate.setLanguage(_:)),
+                keyEquivalent: "")
+            item.representedObject = lang.code
+            languageMenu.addItem(item)
+            if index == 1 { languageMenu.addItem(.separator()) }  // ru/en сверху
+        }
         languageItem.submenu = languageMenu
         menu.addItem(languageItem)
-        self.russianItem = russianItem
-        self.englishItem = englishItem
+        self.languageMenu = languageMenu
         menu.addItem(.separator())
 
         let settingsItem = NSMenuItem(
@@ -107,14 +107,14 @@ final class StatusItemController {
         }
 
         dictateItem.title = state == .recording ? "Остановить и распознать" : "Начать диктовку"
-        russianItem?.state = Prefs.language == "ru" ? .on : .off
-        englishItem?.state = Prefs.language == "en" ? .on : .off
+        refreshLanguageChecks()
     }
 
     /// Обновить галочки языка (после переключения из меню)
     func refreshLanguageChecks() {
-        russianItem?.state = Prefs.language == "ru" ? .on : .off
-        englishItem?.state = Prefs.language == "en" ? .on : .off
+        for item in languageMenu?.items ?? [] {
+            item.state = (item.representedObject as? String) == Prefs.language ? .on : .off
+        }
     }
 
     private func symbol(_ name: String, tint: NSColor?) -> NSImage? {

@@ -137,12 +137,12 @@ struct GeneralTab: View {
 
                 LabeledContent {
                     Picker("", selection: $language) {
-                        Text("Русский").tag("ru")
-                        Text("English").tag("en")
+                        ForEach(Prefs.dictationLanguages, id: \.code) { lang in
+                            Text(lang.name).tag(lang.code)
+                        }
                     }
-                    .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(width: 180)
+                    .frame(width: 210)
                 } label: {
                     RowLabel(icon: "globe", color: .blue, text: "Язык диктовки")
                 }

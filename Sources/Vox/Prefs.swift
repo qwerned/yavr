@@ -64,6 +64,25 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.language) }
     }
 
+    /// Все языки модели Parakeet v3 (коды соответствуют enum Language FluidAudio).
+    /// Русский и английский — первыми, остальные по алфавиту.
+    static let dictationLanguages: [(code: String, name: String)] = [
+        ("ru", "Русский"), ("en", "English"),
+        ("be", "Белорусский"), ("bg", "Болгарский"), ("bs", "Боснийский"),
+        ("hu", "Венгерский"), ("el", "Греческий"), ("da", "Датский"),
+        ("es", "Испанский"), ("it", "Итальянский"), ("lv", "Латышский"),
+        ("lt", "Литовский"), ("mt", "Мальтийский"), ("de", "Немецкий"),
+        ("nl", "Нидерландский"), ("pl", "Польский"), ("pt", "Португальский"),
+        ("ro", "Румынский"), ("sr", "Сербский"), ("sk", "Словацкий"),
+        ("sl", "Словенский"), ("uk", "Украинский"), ("fi", "Финский"),
+        ("fr", "Французский"), ("hr", "Хорватский"), ("cs", "Чешский"),
+        ("sv", "Шведский"), ("et", "Эстонский"),
+    ]
+
+    static func languageName(_ code: String) -> String {
+        dictationLanguages.first { $0.code == code }?.name ?? code
+    }
+
     static var triggerMode: String {
         get { d.string(forKey: Key.triggerMode) ?? "hold" }
         set { d.set(newValue, forKey: Key.triggerMode) }

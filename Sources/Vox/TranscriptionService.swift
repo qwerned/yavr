@@ -52,7 +52,7 @@ actor TranscriptionService {
         guard let asrManager, let ctcModels else { throw VoxError.modelNotInstalled }
         guard samples.count > 8000 else { throw VoxError.recordingTooShort }
 
-        let language: Language = languageCode == "en" ? .english : .russian
+        let language = Language(rawValue: languageCode) ?? .russian
         var decoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)
         let plain = try await asrManager.transcribe(
             samples, decoderState: &decoderState, language: language)
