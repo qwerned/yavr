@@ -17,6 +17,8 @@ enum Prefs {
         static let toggleKeyCode = "toggleKeyCode"  // виртуальный keyCode
         static let toggleModifiers = "toggleModifiers"  // NSEvent.ModifierFlags.rawValue
         static let shortcutBehavior = "shortcutBehavior"  // "hold" | "toggle"
+        static let duckAudio = "duckAudio"
+        static let typingSpeed = "typingSpeed"  // слов/мин, для «сэкономлено»
     }
 
     static func registerDefaults() {
@@ -33,7 +35,14 @@ enum Prefs {
             Key.toggleKeyCode: 49,  // Space
             Key.toggleModifiers: 786432,  // ⌃⌥ (.control | .option)
             Key.shortcutBehavior: "hold",
+            Key.duckAudio: true,
+            Key.typingSpeed: 120,
         ])
+    }
+
+    static var duckAudio: Bool {
+        get { d.bool(forKey: Key.duckAudio) }
+        set { d.set(newValue, forKey: Key.duckAudio) }
     }
 
     static var shortcutBehavior: String {
