@@ -17,6 +17,7 @@ struct GeneralTab: View {
     @AppStorage(Prefs.Key.launchAtLogin) private var launchAtLogin = true
     @AppStorage(Prefs.Key.language) private var language = "ru"
     @AppStorage(Prefs.Key.shortcutBehavior) private var shortcutBehavior = "hold"
+    @AppStorage(Prefs.Key.duckAudio) private var duckAudio = true
 
     @State private var devices: [AudioDevices.Device] = []
     @State private var modelInstalled = TranscriptionService.modelsInstalled()
@@ -100,6 +101,7 @@ struct GeneralTab: View {
             }
 
             Section {
+                Toggle("Приглушать звук при записи", isOn: $duckAudio)
                 Toggle("Звуки начала и конца записи", isOn: $playSounds)
                 Toggle("Показывать попап с результатом", isOn: $showPopup)
                 Toggle("Запускать при входе в систему", isOn: $launchAtLogin)

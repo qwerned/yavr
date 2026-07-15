@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let recorder = Recorder()
     private let popup = ResultPopup()
     private let indicator = RecordingIndicator()
+    private let ducker = AudioDucker()
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
 
@@ -63,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         do {
+            if Prefs.duckAudio { ducker.duck() }
             try recorder.start(microphoneUID: Prefs.microphoneUID)
             recordingStart = Date()
             statusController.state = .recording
@@ -76,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func finishRecording() {
         guard recorder.isRecording else { return }
         let samples = recorder.stop()
+        ducker.restore()
         let duration = recordingStart.map { Date().timeIntervalSince($0) } ?? 0
         recordingStart = nil
         if Prefs.playSounds { NSSound(named: "Pop")?.play() }
@@ -120,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func deliver(text: String, duration: TimeInterval) {
         indicator.hide()
         lastResult = text
+        StatsStore.shared.record(text: text)
         NotificationCenter.default.post(name: .voxDictation, object: text)
 
         // Пробел в конце, чтобы последовательные диктовки не склеивались
@@ -213,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             tabs.tabViewItems = [
                 makeTab(GeneralTab(), title: "Основные", icon: "gearshape"),
                 makeTab(DictionaryTab(), title: "Словарь", icon: "character.book.closed"),
+                makeTab(StatsTab(), title: "Статистика", icon: "chart.bar"),
                 makeTab(AboutTab(), title: "О программе", icon: "info.circle"),
             ]
 
