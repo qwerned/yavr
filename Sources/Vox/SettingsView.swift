@@ -103,7 +103,6 @@ struct GeneralTab: View {
                             Text("Правый Control (⌃)").tag("rightControl")
                         }
                         .labelsHidden()
-                        .frame(width: 240)
                     } label: {
                         SubRowLabel(text: "Клавиша")
                     }
@@ -119,7 +118,6 @@ struct GeneralTab: View {
                             Text("Нажал — старт, нажал — стоп").tag("toggle")
                         }
                         .labelsHidden()
-                        .frame(width: 240)
                     } label: {
                         SubRowLabel(text: "Режим")
                     }
@@ -133,7 +131,6 @@ struct GeneralTab: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 240)
                 } label: {
                     RowLabel(icon: "mic.fill", color: .red, text: "Микрофон")
                 }
@@ -145,7 +142,6 @@ struct GeneralTab: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 240)
                 } label: {
                     RowLabel(icon: "globe", color: .blue, text: "Язык диктовки")
                 }
@@ -168,7 +164,6 @@ struct GeneralTab: View {
                         Text("Только в буфер обмена").tag("clipboard")
                     }
                     .labelsHidden()
-                    .frame(width: 240)
                 } label: {
                     RowLabel(icon: "doc.on.clipboard", color: .green, text: "Вставка")
                 }
