@@ -180,13 +180,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggleDictationInternal()
     }
 
-    @objc func setLanguageRussian() {
-        Prefs.language = "ru"
-        statusController.refreshLanguageChecks()
-    }
-
-    @objc func setLanguageEnglish() {
-        Prefs.language = "en"
+    @objc func setLanguage(_ sender: NSMenuItem) {
+        guard let code = sender.representedObject as? String else { return }
+        Prefs.language = code
         statusController.refreshLanguageChecks()
     }
 
