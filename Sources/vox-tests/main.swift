@@ -128,6 +128,7 @@ do {  // commonRussianWordsUntouched
             "скролл пропал",  // не skill
             "это не нужно",  // не Notion
             "табло аэровокзала",  // не Tableau
+            "довез посылку до офиса",  // не Docker
         ]
         for phrase in untouchable {
             expect(apply(phrase), phrase, "ложное срабатывание в: \(phrase)")

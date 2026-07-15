@@ -353,9 +353,7 @@
     },
     {
       "text": "Docker",
-      "aliases": [
-        "докер"
-      ],
+      "aliases": [],
       "replacements": [
         "докер"
       ]
