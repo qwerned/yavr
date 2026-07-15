@@ -1,0 +1,535 @@
+{
+  "minTermLength": 2,
+  "terms": [
+    {
+      "text": "dbt",
+      "aliases": [
+        "дибити",
+        "ди би ти",
+        "дбт",
+        "дэбэтэ"
+      ],
+      "replacements": [
+        "дибити",
+        "дбт",
+        "дебит",
+        "дэбэтэ",
+        "д бт",
+        "дэ бт"
+      ]
+    },
+    {
+      "text": "Airflow",
+      "aliases": [
+        "эйрфлоу",
+        "айрфлоу",
+        "эйр флоу"
+      ],
+      "replacements": [
+        "эйрфлоу",
+        "айрфлоу",
+        "эйр флоу"
+      ]
+    },
+    {
+      "text": "DAG",
+      "aliases": [],
+      "replacements": [
+        "даг"
+      ]
+    },
+    {
+      "text": "MWAA",
+      "aliases": [],
+      "replacements": [
+        "эм ва а"
+      ]
+    },
+    {
+      "text": "BigQuery",
+      "aliases": [
+        "бигквери",
+        "биг квери"
+      ],
+      "replacements": [
+        "бигквери",
+        "биг квери",
+        "бигквере"
+      ]
+    },
+    {
+      "text": "SQL",
+      "aliases": [
+        "эскюэль",
+        "сиквел",
+        "эс ку эль",
+        "скуль"
+      ],
+      "minSimilarity": 0.7,
+      "replacements": [
+        "эскюэль",
+        "сиквел",
+        "скуль",
+        "скюэль",
+        "сквел"
+      ]
+    },
+    {
+      "text": "CTE",
+      "aliases": [],
+      "replacements": [
+        "си ти и"
+      ]
+    },
+    {
+      "text": "Lightdash",
+      "aliases": [
+        "лайтдэш",
+        "лайтдаш",
+        "лайт дэш"
+      ],
+      "replacements": [
+        "лайтдэш",
+        "лайтдаш",
+        "лайт дэш",
+        "лайт-дэш"
+      ]
+    },
+    {
+      "text": "YAML",
+      "aliases": [
+        "ямл",
+        "ямэль"
+      ],
+      "replacements": [
+        "ямл",
+        "ямэль"
+      ]
+    },
+    {
+      "text": "dimension",
+      "aliases": [],
+      "replacements": [
+        "дименшн",
+        "дименшен"
+      ]
+    },
+    {
+      "text": "metric",
+      "aliases": [],
+      "replacements": []
+    },
+    {
+      "text": "deploy",
+      "aliases": [],
+      "replacements": []
+    },
+    {
+      "text": "dashboard",
+      "aliases": [
+        "дашборд"
+      ],
+      "replacements": [
+        "дашборд"
+      ]
+    },
+    {
+      "text": "chart",
+      "aliases": [],
+      "replacements": []
+    },
+    {
+      "text": "GA4",
+      "aliases": [
+        "джи эй фор",
+        "га четыре",
+        "га4",
+        "га 4"
+      ],
+      "replacements": [
+        "га4",
+        "га 4",
+        "джи эй фор"
+      ]
+    },
+    {
+      "text": "OWOX",
+      "aliases": [
+        "овокс",
+        "оуокс"
+      ],
+      "replacements": [
+        "овокс",
+        "оуокс"
+      ]
+    },
+    {
+      "text": "LTV",
+      "aliases": [
+        "эль ти ви",
+        "элтиви",
+        "лтв"
+      ],
+      "replacements": [
+        "лтв",
+        "элтиви"
+      ]
+    },
+    {
+      "text": "ROAS",
+      "aliases": [
+        "роас",
+        "роуз"
+      ],
+      "replacements": [
+        "роас",
+        "роуз"
+      ]
+    },
+    {
+      "text": "CAC",
+      "aliases": [],
+      "replacements": [
+        "си эй си"
+      ]
+    },
+    {
+      "text": "FTD",
+      "aliases": [
+        "эф ти ди"
+      ],
+      "replacements": [
+        "фтд",
+        "эфтиди"
+      ]
+    },
+    {
+      "text": "GitLab",
+      "aliases": [
+        "гитлаб",
+        "гит лаб"
+      ],
+      "replacements": [
+        "гитлаб",
+        "гит лаб",
+        "гетлаб",
+        "гитлб"
+      ]
+    },
+    {
+      "text": "merge request",
+      "aliases": [
+        "мердж реквест",
+        "мерж реквест"
+      ],
+      "replacements": [
+        "мердж реквест",
+        "мерж реквест",
+        "мердж-реквест",
+        "мерж-реквест",
+        "мр"
+      ]
+    },
+    {
+      "text": "commit",
+      "aliases": [],
+      "replacements": []
+    },
+    {
+      "text": "push",
+      "aliases": [],
+      "replacements": []
+    },
+    {
+      "text": "Python",
+      "aliases": [
+        "питон",
+        "пайтон"
+      ],
+      "minSimilarity": 0.7,
+      "replacements": [
+        "питон",
+        "пайтон"
+      ]
+    },
+    {
+      "text": "venv",
+      "aliases": [
+        "венв",
+        "ви энв"
+      ],
+      "replacements": [
+        "венв"
+      ],
+      "minSimilarity": 0.78
+    },
+    {
+      "text": "S3",
+      "aliases": [
+        "эс три",
+        "с3",
+        "с 3"
+      ],
+      "replacements": [
+        "с3",
+        "эс три"
+      ],
+      "minSimilarity": 0.8
+    },
+    {
+      "text": "CloudWatch",
+      "aliases": [
+        "клаудвотч",
+        "клауд вотч",
+        "клоудвоч"
+      ],
+      "minSimilarity": 0.78,
+      "replacements": [
+        "клаудвотч",
+        "клауд вотч",
+        "клоудвоч",
+        "клаудвоч"
+      ]
+    },
+    {
+      "text": "Slack",
+      "aliases": [
+        "слак",
+        "слэк"
+      ],
+      "replacements": [
+        "слак",
+        "слэк",
+        "слаг"
+      ]
+    },
+    {
+      "text": "Notion",
+      "aliases": [],
+      "replacements": [
+        "ноушн",
+        "ноушен",
+        "ношен"
+      ]
+    },
+    {
+      "text": "Tableau",
+      "aliases": [],
+      "replacements": []
+    },
+    {
+      "text": "Cloud Run",
+      "aliases": [
+        "клауд ран"
+      ],
+      "minSimilarity": 0.7,
+      "replacements": [
+        "клауд ран",
+        "клаудран"
+      ]
+    },
+    {
+      "text": "GCP",
+      "aliases": [
+        "джи си пи"
+      ],
+      "replacements": [
+        "джисипи"
+      ]
+    },
+    {
+      "text": "CI/CD",
+      "aliases": [
+        "сиайсиди",
+        "си ай си ди",
+        "си-д"
+      ],
+      "replacements": [
+        "сиайсиди",
+        "си-д",
+        "сицд"
+      ]
+    },
+    {
+      "text": "Docker",
+      "aliases": [
+        "докер"
+      ],
+      "replacements": [
+        "докер"
+      ]
+    },
+    {
+      "text": "staging",
+      "aliases": [
+        "стейджинг",
+        "стейдж"
+      ],
+      "replacements": [
+        "стейджинг",
+        "стейджинге"
+      ]
+    },
+    {
+      "text": "mart",
+      "aliases": [],
+      "replacements": []
+    },
+    {
+      "text": "backfill",
+      "aliases": [
+        "бэкфилл",
+        "бекфил"
+      ],
+      "replacements": [
+        "бэкфилл",
+        "бэкфил",
+        "бекфилл",
+        "бекфил"
+      ]
+    },
+    {
+      "text": "API",
+      "aliases": [
+        "апи",
+        "эй пи ай"
+      ],
+      "replacements": [
+        "апи"
+      ]
+    },
+    {
+      "text": "Claude Code",
+      "aliases": [
+        "клод код"
+      ],
+      "replacements": [
+        "клод код",
+        "клод-код"
+      ]
+    },
+    {
+      "text": "Claude",
+      "aliases": [
+        "клод"
+      ],
+      "replacements": [
+        "клод"
+      ]
+    },
+    {
+      "text": "skill",
+      "aliases": [],
+      "replacements": [
+        "скилл",
+        "скил"
+      ]
+    },
+    {
+      "text": "LLM",
+      "aliases": [
+        "эль эль эм",
+        "элэлэм",
+        "ллм",
+        "лм"
+      ],
+      "replacements": [
+        "ллм",
+        "лм",
+        "элэлэм"
+      ]
+    },
+    {
+      "text": "MCP",
+      "aliases": [
+        "эм си пи",
+        "эмсипи",
+        "мсп"
+      ],
+      "replacements": [
+        "мсп",
+        "эмсипи",
+        "мцп"
+      ]
+    },
+    {
+      "text": "prompt",
+      "aliases": [
+        "промпт",
+        "промт"
+      ],
+      "minSimilarity": 0.75,
+      "replacements": [
+        "промпт",
+        "промт"
+      ]
+    },
+    {
+      "text": "RAG",
+      "aliases": [
+        "раг",
+        "рэг"
+      ],
+      "minSimilarity": 0.8,
+      "replacements": [
+        "раг",
+        "рэг"
+      ]
+    },
+    {
+      "text": "embedding",
+      "aliases": [
+        "эмбеддинг",
+        "эмбединг"
+      ],
+      "replacements": [
+        "эмбеддинг",
+        "эмбединг"
+      ]
+    },
+    {
+      "text": "Anthropic",
+      "aliases": [
+        "антропик"
+      ],
+      "replacements": [
+        "антропик",
+        "энтропик"
+      ]
+    },
+    {
+      "text": "OpenAI",
+      "aliases": [
+        "опен эй ай",
+        "опенэйай"
+      ],
+      "replacements": [
+        "опенэйай",
+        "опен эй ай",
+        "опенаи"
+      ]
+    },
+    {
+      "text": "ChatGPT",
+      "aliases": [],
+      "replacements": [
+        "чат джипити",
+        "чатжипити",
+        "чатгпт",
+        "чат гпт"
+      ]
+    },
+    {
+      "text": "Gemini",
+      "aliases": [
+        "джемини",
+        "гемини"
+      ],
+      "minSimilarity": 0.75,
+      "replacements": [
+        "джемини",
+        "гемини"
+      ]
+    }
+  ]
+}
