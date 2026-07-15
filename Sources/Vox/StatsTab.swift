@@ -8,19 +8,10 @@ struct StatsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Статистика")
-                    .font(.headline)
-                Spacer()
-                Text("Скорость печати")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Stepper(value: $typingSpeed, in: 10...300, step: 10) {
-                    Text("\(typingSpeed) слов/мин")
-                        .font(.caption)
-                        .monospacedDigit()
-                }
-            }
+            Text("СТАТИСТИКА")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
 
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible())],
@@ -32,9 +23,11 @@ struct StatsTab: View {
                 StatCard(title: "За всё время", totals: stats.allTime, wpm: typingSpeed)
             }
 
-            Text("Слова за 30 дней")
-                .font(.subheadline.weight(.semibold))
-                .padding(.top, 4)
+            Text("СЛОВА ЗА 30 ДНЕЙ")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .padding(.top, 6)
 
             Chart(stats.last30Days, id: \.date) { item in
                 BarMark(
@@ -53,9 +46,23 @@ struct StatsTab: View {
                 }
             }
             .frame(maxHeight: .infinity)
+
+            HStack {
+                RowLabel(
+                    icon: "gauge.with.needle", color: .orange, text: "Скорость печати",
+                    sub: "для расчёта сэкономленного времени")
+                Spacer()
+                Stepper(value: $typingSpeed, in: 10...300, step: 10) {
+                    Text("\(typingSpeed) слов/мин")
+                        .font(.system(size: 12))
+                        .monospacedDigit()
+                }
+            }
+            .padding(12)
+            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
         }
-        .padding(20)
-        .frame(width: 520, height: 614)
+        .padding(18)
+        .frame(width: settingsTabSize.width, height: settingsTabSize.height)
     }
 }
 

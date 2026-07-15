@@ -35,6 +35,8 @@
 
 ![Настройки](docs/img/settings.png)
 
+![Словарь](docs/img/dictionary.png)
+
 ![Статистика](docs/img/stats.png)
 
 ## Установка
