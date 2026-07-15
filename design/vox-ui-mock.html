@@ -1,0 +1,720 @@
+<title>YAVR — UI Mock</title>
+<style>
+  :root {
+    --page-bg: #F2F2F4;
+    --page-ink: #1C1C1E;
+    --page-muted: #6E6E73;
+    --accent: #5E5CE6;
+    --hairline: #DCDCE0;
+    --canvas: #E8E8EC;
+
+    --win-bg: #F6F6F8;
+    --win-toolbar: #ECECEF;
+    --win-border: rgba(0, 0, 0, 0.14);
+    --win-shadow: 0 18px 50px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.10);
+    --win-text: #1D1D1F;
+    --win-secondary: #86868B;
+    --ctrl-bg: #FFFFFF;
+    --ctrl-border: rgba(0, 0, 0, 0.18);
+    --row-hairline: rgba(0, 0, 0, 0.08);
+    --group-bg: #FFFFFF;
+
+    --blue: #007AFF;
+    --red: #FF3B30;
+    --orange: #FF9500;
+    --green: #34C759;
+
+    --menubar-bg: linear-gradient(180deg, rgba(38, 40, 66, 0.92), rgba(30, 32, 52, 0.92));
+    --menubar-ink: rgba(255, 255, 255, 0.92);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page-bg: #161618;
+      --page-ink: #F2F2F4;
+      --page-muted: #98989F;
+      --accent: #8280FF;
+      --hairline: #2C2C2E;
+      --canvas: #1F1F22;
+
+      --win-bg: #29292B;
+      --win-toolbar: #323234;
+      --win-border: rgba(255, 255, 255, 0.16);
+      --win-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+      --win-text: #F5F5F7;
+      --win-secondary: #A1A1A6;
+      --ctrl-bg: #3A3A3C;
+      --ctrl-border: rgba(255, 255, 255, 0.22);
+      --row-hairline: rgba(255, 255, 255, 0.10);
+      --group-bg: #323234;
+
+      --blue: #0A84FF;
+      --red: #FF453A;
+      --orange: #FF9F0A;
+      --green: #30D158;
+    }
+  }
+  :root[data-theme="light"] {
+    --page-bg: #F2F2F4; --page-ink: #1C1C1E; --page-muted: #6E6E73; --accent: #5E5CE6;
+    --hairline: #DCDCE0; --canvas: #E8E8EC;
+    --win-bg: #F6F6F8; --win-toolbar: #ECECEF; --win-border: rgba(0,0,0,0.14);
+    --win-shadow: 0 18px 50px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.10);
+    --win-text: #1D1D1F; --win-secondary: #86868B; --ctrl-bg: #FFFFFF;
+    --ctrl-border: rgba(0,0,0,0.18); --row-hairline: rgba(0,0,0,0.08); --group-bg: #FFFFFF;
+    --blue: #007AFF; --red: #FF3B30; --orange: #FF9500; --green: #34C759;
+  }
+  :root[data-theme="dark"] {
+    --page-bg: #161618; --page-ink: #F2F2F4; --page-muted: #98989F; --accent: #8280FF;
+    --hairline: #2C2C2E; --canvas: #1F1F22;
+    --win-bg: #29292B; --win-toolbar: #323234; --win-border: rgba(255,255,255,0.16);
+    --win-shadow: 0 18px 50px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.35);
+    --win-text: #F5F5F7; --win-secondary: #A1A1A6; --ctrl-bg: #3A3A3C;
+    --ctrl-border: rgba(255,255,255,0.22); --row-hairline: rgba(255,255,255,0.10); --group-bg: #323234;
+    --blue: #0A84FF; --red: #FF453A; --orange: #FF9F0A; --green: #30D158;
+  }
+
+  body {
+    background: var(--page-bg);
+    color: var(--page-ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    line-height: 1.5;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  /* ---------- Шапка документа ---------- */
+  header.doc { margin-bottom: 64px; }
+  .doc-eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 10px;
+  }
+  header.doc h1 {
+    font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 12px;
+    text-wrap: balance;
+  }
+  header.doc p { max-width: 62ch; color: var(--page-muted); margin: 0; font-size: 14.5px; }
+
+  /* ---------- Секции ---------- */
+  section.screen { margin-bottom: 80px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .sec-num {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px; font-weight: 600; color: var(--accent);
+  }
+  section.screen h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+  .annot {
+    color: var(--page-muted); font-size: 13.5px; max-width: 68ch;
+    margin: 0 0 24px; padding-left: 27px;
+  }
+  .annot li { margin: 3px 0; }
+  ul.annot { list-style: disc; padding-left: 45px; }
+
+  .canvas {
+    background: var(--canvas);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 44px 28px;
+    display: flex; flex-direction: column; align-items: center; gap: 36px;
+    overflow-x: auto;
+  }
+  .canvas-row { display: flex; flex-wrap: wrap; gap: 36px; justify-content: center; align-items: flex-start; }
+
+  /* ---------- macOS окно ---------- */
+  .win {
+    background: var(--win-bg);
+    border: 1px solid var(--win-border);
+    border-radius: 12px;
+    box-shadow: var(--win-shadow);
+    color: var(--win-text);
+    font-size: 13px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .titlebar {
+    display: grid; grid-template-columns: 70px 1fr 70px; align-items: center;
+    padding: 10px 12px 8px;
+  }
+  .traffic { display: flex; gap: 8px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .traffic .r { background: #FF5F57; } .traffic .y { background: #FEBC2E; } .traffic .g { background: #28C840; }
+  .traffic .off { background: transparent; border: 1px solid var(--ctrl-border); box-sizing: border-box; }
+  .win-title { text-align: center; font-weight: 600; font-size: 13px; }
+
+  /* Тулбар-табы как в настройках macOS */
+  .tabs {
+    display: flex; justify-content: center; gap: 6px;
+    padding: 2px 12px 10px; background: var(--win-toolbar);
+    border-bottom: 1px solid var(--row-hairline);
+  }
+  .win .titlebar { background: var(--win-toolbar); }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-size: 11px; color: var(--win-secondary);
+    padding: 4px 14px; border-radius: 8px; min-width: 52px;
+  }
+  .tab svg { width: 22px; height: 22px; }
+  .tab.active { background: rgba(120, 120, 128, 0.16); color: var(--win-text); }
+  .tab.active svg { color: var(--blue); }
+
+  .win-body { padding: 20px; }
+
+  /* Группы настроек */
+  .group {
+    background: var(--group-bg);
+    border: 1px solid var(--row-hairline);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 11px 14px;
+  }
+  .row + .row { border-top: 1px solid var(--row-hairline); }
+  .row .label { font-weight: 500; }
+  .row .sub { display: block; font-weight: 400; font-size: 11.5px; color: var(--win-secondary); margin-top: 2px; max-width: 30ch; }
+  .row.stack { flex-direction: column; align-items: flex-start; gap: 8px; }
+
+  /* Контролы */
+  .select {
+    display: inline-flex; align-items: center; gap: 22px;
+    background: var(--ctrl-bg); border: 1px solid var(--ctrl-border);
+    border-radius: 6px; padding: 3px 6px 3px 10px; font-size: 12.5px;
+    box-shadow: 0 0.5px 1.5px rgba(0,0,0,0.08);
+    white-space: nowrap;
+  }
+  .select .chev {
+    background: var(--blue); color: #fff; border-radius: 4px;
+    width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9px; line-height: 1;
+  }
+  .btn {
+    background: var(--ctrl-bg); border: 1px solid var(--ctrl-border);
+    border-radius: 6px; padding: 4px 14px; font-size: 12.5px; font-weight: 500;
+    color: var(--win-text); box-shadow: 0 0.5px 1.5px rgba(0,0,0,0.08);
+    white-space: nowrap;
+  }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .switch { width: 38px; height: 22px; border-radius: 11px; background: var(--green); position: relative; flex-shrink: 0; }
+  .switch::after {
+    content: ""; position: absolute; top: 1px; width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); right: 1px;
+  }
+  .switch.off { background: rgba(120, 120, 128, 0.32); }
+  .switch.off::after { left: 1px; right: auto; }
+  .radio { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; }
+  .radio i {
+    width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+    border: 1px solid var(--ctrl-border); background: var(--ctrl-bg); box-sizing: border-box;
+  }
+  .radio.on i { background: var(--blue); border-color: var(--blue); position: relative; }
+  .radio.on i::after {
+    content: ""; position: absolute; inset: 4.5px; border-radius: 50%; background: #fff;
+  }
+  .kbd {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+    background: var(--ctrl-bg); border: 1px solid var(--ctrl-border); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 7px; white-space: nowrap;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .dot.green { background: var(--green); } .dot.orange { background: var(--orange); } .dot.red { background: var(--red); }
+
+  /* ---------- Меню-бар ---------- */
+  .menubar {
+    width: 100%; max-width: 660px;
+    background: var(--menubar-bg);
+    border-radius: 10px;
+    color: var(--menubar-ink);
+    display: flex; align-items: center; justify-content: flex-end; gap: 18px;
+    padding: 7px 16px; font-size: 12.5px; font-weight: 500;
+    box-shadow: var(--win-shadow);
+  }
+  .menubar .clock { font-variant-numeric: tabular-nums; }
+  .mb-glyphs { display: flex; gap: 18px; opacity: 0.85; align-items: center; }
+
+  .state-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 20px; width: 100%; max-width: 660px;
+  }
+  .state {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    background: var(--win-bg); border: 1px solid var(--win-border); border-radius: 10px;
+    padding: 18px 10px 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  }
+  .state .chip {
+    background: var(--menubar-bg); border-radius: 7px; padding: 6px 12px;
+    display: flex; align-items: center;
+  }
+  .state b { font-size: 12px; font-weight: 600; color: var(--win-text); }
+  .state span { font-size: 11px; color: var(--win-secondary); text-align: center; line-height: 1.35; }
+
+  /* Иконка Vox: 4 столбика-волны */
+  .vox { display: inline-flex; align-items: center; gap: 2px; height: 16px; position: relative; }
+  .vox i { width: 2.5px; border-radius: 2px; background: var(--menubar-ink); display: block; }
+  .vox i:nth-child(1) { height: 6px; } .vox i:nth-child(2) { height: 12px; }
+  .vox i:nth-child(3) { height: 9px; }  .vox i:nth-child(4) { height: 5px; }
+  .vox.rec i { background: #FF6961; }
+  @keyframes wave { 0%, 100% { transform: scaleY(0.55); } 50% { transform: scaleY(1.25); } }
+  .vox.rec i { animation: wave 0.9s ease-in-out infinite; transform-origin: center; }
+  .vox.rec i:nth-child(2) { animation-delay: 0.15s; } .vox.rec i:nth-child(3) { animation-delay: 0.3s; }
+  .vox.rec i:nth-child(4) { animation-delay: 0.45s; }
+  @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+  .vox.busy i { animation: pulse 1.1s ease-in-out infinite; }
+  .vox.busy i:nth-child(2) { animation-delay: 0.12s; } .vox.busy i:nth-child(3) { animation-delay: 0.24s; }
+  .vox.busy i:nth-child(4) { animation-delay: 0.36s; }
+  .vox.err i { opacity: 0.45; }
+  .vox .badge {
+    position: absolute; top: -4px; right: -7px; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--orange); border: 1.5px solid rgba(30, 32, 52, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vox.rec i, .vox.busy i { animation: none; }
+  }
+
+  /* Дропдаун-меню из иконки */
+  .dropdown {
+    width: 250px; background: var(--win-bg); border: 1px solid var(--win-border);
+    border-radius: 10px; box-shadow: var(--win-shadow); padding: 5px; font-size: 13px;
+    color: var(--win-text);
+  }
+  .dd-item { display: flex; justify-content: space-between; align-items: center; padding: 5px 10px; border-radius: 6px; }
+  .dd-item.hl { background: var(--blue); color: #fff; }
+  .dd-item .short { color: var(--win-secondary); font-size: 12px; }
+  .dd-item.hl .short { color: rgba(255,255,255,0.75); }
+  .dd-sep { height: 1px; background: var(--row-hairline); margin: 5px 10px; }
+  .dd-status { padding: 5px 10px; font-size: 11.5px; color: var(--win-secondary); }
+
+  /* ---------- Dictionary ---------- */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px; }
+  .chip-term {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+    background: var(--ctrl-bg); border: 1px solid var(--ctrl-border);
+    border-radius: 6px; padding: 3px 8px;
+  }
+  .chip-term em { font-style: normal; color: var(--win-secondary); font-size: 10px; }
+  .dict-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .dict-table th {
+    text-align: left; font-size: 11px; font-weight: 600; color: var(--win-secondary);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 9px 14px; border-bottom: 1px solid var(--row-hairline);
+  }
+  .dict-table td { padding: 8px 14px; border-bottom: 1px solid var(--row-hairline); vertical-align: top; }
+  .dict-table tr:last-child td { border-bottom: none; }
+  .dict-table .canon { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; font-weight: 600; }
+  .dict-table .vars { color: var(--win-secondary); }
+  .arrow { color: var(--win-secondary); padding: 0 4px; }
+  .toolbar-foot {
+    display: flex; align-items: center; gap: 0; border-top: 1px solid var(--row-hairline);
+    padding: 4px 8px; color: var(--win-secondary);
+  }
+  .tb-btn { padding: 2px 10px; font-size: 15px; line-height: 1.2; border-right: 1px solid var(--row-hairline); }
+  .search {
+    margin-left: auto; display: flex; align-items: center; gap: 5px;
+    background: var(--ctrl-bg); border: 1px solid var(--ctrl-border); border-radius: 6px;
+    font-size: 12px; color: var(--win-secondary); padding: 2px 9px;
+  }
+
+  /* ---------- Попап результата ---------- */
+  .popup {
+    width: 340px; background: var(--win-bg); border: 1px solid var(--win-border);
+    border-radius: 12px; box-shadow: var(--win-shadow); color: var(--win-text);
+    font-size: 13px; overflow: hidden;
+  }
+  .popup-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px; border-bottom: 1px solid var(--row-hairline);
+    font-size: 11.5px; color: var(--win-secondary);
+  }
+  .popup-body { padding: 12px 14px 14px; }
+  .popup-text { line-height: 1.45; margin: 0 0 12px; }
+  .popup-foot { display: flex; gap: 8px; justify-content: flex-end; }
+  .pasted-note { display: flex; align-items: center; font-size: 11.5px; color: var(--win-secondary); margin-right: auto; }
+
+  /* ---------- Onboarding ---------- */
+  .ob { width: 470px; }
+  .ob .win-body { padding: 28px 34px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .ob h3 { font-size: 17px; font-weight: 700; margin: 14px 0 6px; }
+  .ob p.lead { color: var(--win-secondary); font-size: 12.5px; margin: 0 0 18px; max-width: 40ch; }
+  .ob-icon {
+    width: 56px; height: 56px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(94, 92, 230, 0.14); color: var(--accent);
+  }
+  .ob-icon svg { width: 30px; height: 30px; }
+  .progress {
+    width: 100%; height: 6px; border-radius: 3px; background: rgba(120,120,128,0.24);
+    overflow: hidden; margin: 4px 0 8px;
+  }
+  .progress i { display: block; height: 100%; width: 42%; background: var(--blue); border-radius: 3px; }
+  .prog-meta { display: flex; justify-content: space-between; width: 100%; font-size: 11.5px; color: var(--win-secondary); font-variant-numeric: tabular-nums; }
+  .steps { display: flex; gap: 7px; padding: 14px 0 18px; }
+  .steps i { width: 7px; height: 7px; border-radius: 50%; background: rgba(120,120,128,0.35); }
+  .steps i.on { background: var(--blue); }
+  .ob-foot { display: flex; justify-content: space-between; width: 100%; align-items: center; }
+  .ob-foot .skip { color: var(--win-secondary); font-size: 12px; }
+  .test-box {
+    width: 100%; text-align: left; background: var(--ctrl-bg); border: 1px solid var(--ctrl-border);
+    border-radius: 8px; padding: 10px 12px; font-size: 12.5px; min-height: 44px; margin-bottom: 6px;
+  }
+  .test-box .placeholder { color: var(--win-secondary); }
+  .ob-label { font-size: 12px; font-weight: 600; text-align: center; color: var(--page-muted); margin-top: 10px; }
+  .perm-row {
+    width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
+    background: var(--ctrl-bg); border: 1px solid var(--ctrl-border); border-radius: 8px;
+    padding: 10px 12px; font-size: 12px; margin-bottom: 14px;
+  }
+  .perm-row svg { width: 20px; height: 20px; color: var(--win-secondary); flex-shrink: 0; }
+
+  /* ---------- Вопросы ---------- */
+  .questions {
+    border: 1px solid var(--hairline); border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 20px 24px; background: var(--canvas);
+  }
+  .questions h2 { font-size: 16px; margin: 0 0 10px; }
+  .questions ol { margin: 0; padding-left: 20px; font-size: 13.5px; color: var(--page-ink); }
+  .questions li { margin: 6px 0; }
+  .questions li::marker { color: var(--accent); font-weight: 600; }
+</style>
+
+<div class="wrap">
+  <header class="doc">
+    <p class="doc-eyebrow">YAVR · Этап 4 · дизайн-мок</p>
+    <h1>Пять экранов menu-bar утилиты YAVR</h1>
+    <p>Имитация нативного macOS (SF Pro, системные контролы). Строки интерфейса — на русском (согласовано 15.07.2026). Страница поддерживает светлую и тёмную тему —
+    переключите тему, чтобы посмотреть оба варианта.</p>
+  </header>
+
+  <!-- ============ 1. Меню-бар ============ -->
+  <section class="screen">
+    <div class="sec-head"><span class="sec-num">01</span><h2>Иконка в меню-баре: четыре состояния</h2></div>
+    <ul class="annot">
+      <li>Иконка — «волна» из 4 столбиков, template-режим (перекрашивается системой).</li>
+      <li>Recording — красная анимированная волна; transcribing — пульсация; error — оранжевый бейдж.</li>
+      <li>Клик — меню; Start Dictation дублирует хоткей. Внизу меню — строка статуса, в т.ч. ненавязчивая индикация «вставка недоступна, только буфер» при secure input / отсутствии Accessibility.</li>
+    </ul>
+    <div class="canvas">
+      <div class="menubar">
+        <span class="mb-glyphs">
+          <span class="vox"><i></i><i></i><i></i><i></i></span>
+          <svg width="15" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 9.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM4.9 7.6a4.4 4.4 0 0 1 6.2 0l-1.3 1.3a2.6 2.6 0 0 0-3.6 0L4.9 7.6zM2.1 4.8a8.4 8.4 0 0 1 11.8 0l-1.3 1.3a6.5 6.5 0 0 0-9.2 0L2.1 4.8zM0 2.6a11.6 11.6 0 0 1 16 0l-1.3 1.3a9.8 9.8 0 0 0-13.4 0L0 2.6z"/></svg>
+          <svg width="22" height="11" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="currentColor" opacity="0.5"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="2" height="4" rx="1" fill="currentColor" opacity="0.5"/></svg>
+        </span>
+        <span class="clock">Tue 15 Jul&nbsp;&nbsp;15:42</span>
+      </div>
+      <div class="state-grid">
+        <div class="state">
+          <span class="chip"><span class="vox"><i></i><i></i><i></i><i></i></span></span>
+          <b>Idle</b><span>Обычный template-цвет, статична</span>
+        </div>
+        <div class="state">
+          <span class="chip"><span class="vox rec"><i></i><i></i><i></i><i></i></span></span>
+          <b>Recording</b><span>Красная, столбики «дышат» под голос</span>
+        </div>
+        <div class="state">
+          <span class="chip"><span class="vox busy"><i></i><i></i><i></i><i></i></span></span>
+          <b>Transcribing</b><span>Бегущая пульсация прозрачности</span>
+        </div>
+        <div class="state">
+          <span class="chip"><span class="vox err"><i></i><i></i><i></i><i></i><span class="badge"></span></span></span>
+          <b>Error / degraded</b><span>Пригашена + оранжевый бейдж, причина — в меню</span>
+        </div>
+      </div>
+      <div class="dropdown">
+        <div class="dd-item hl">Начать диктовку <span class="short">⌥ удерж.</span></div>
+        <div class="dd-item">Скопировать последний результат <span class="short">⇧⌘C</span></div>
+        <div class="dd-sep"></div>
+        <div class="dd-item">Настройки… <span class="short">⌘,</span></div>
+        <div class="dd-item">О программе YAVR</div>
+        <div class="dd-sep"></div>
+        <div class="dd-status"><span class="dot orange"></span>Вставка недоступна (защищённый ввод) — копирую в буфер</div>
+        <div class="dd-sep"></div>
+        <div class="dd-item">Завершить YAVR <span class="short">⌘Q</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 2. Settings · General ============ -->
+  <section class="screen">
+    <div class="sec-head"><span class="sec-num">02</span><h2>Настройки — вкладка General</h2></div>
+    <ul class="annot">
+      <li>Ровно набор v1 из ТЗ: триггер записи, микрофон, вставка, модель, звуки, автозапуск.</li>
+      <li>Смена hold-модификатора — дропдаун; toggle-шорткат — поле-рекордер (кликнул и нажал сочетание).</li>
+      <li>Статус модели: Installed (зелёная точка) / Not installed (оранжевая + кнопка Download).</li>
+    </ul>
+    <div class="canvas">
+      <div class="win" style="width: 480px;">
+        <div class="titlebar">
+          <span class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></span>
+          <span class="win-title">Настройки YAVR</span><span></span>
+        </div>
+        <div class="tabs">
+          <span class="tab active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
+            Основные
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M5 4a2.5 2.5 0 0 0 0 5h14"/><path d="M9 13h6M9 16h4"/></svg>
+            Словарь
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>
+            О программе
+          </span>
+        </div>
+        <div class="win-body">
+          <div class="group">
+            <div class="row stack">
+              <span class="label">Триггер записи</span>
+              <span class="radio on"><i></i><span>Удерживать модификатор &nbsp;<span class="select">Правый Option (⌥) <span class="chev">▾</span></span></span></span>
+              <span class="radio"><i></i><span>Включать/выключать шорткатом &nbsp;<span class="kbd">⌃⌥Space</span></span></span>
+            </div>
+            <div class="row">
+              <span class="label">Микрофон</span>
+              <span class="select">Системный по умолчанию <span class="chev">▾</span></span>
+            </div>
+            <div class="row stack">
+              <span class="label">Результат диктовки</span>
+              <span class="radio on"><i></i><span>Вставлять в активное окно<span class="sub">Копия остаётся в буфере обмена. Если вставка невозможна — только буфер.</span></span></span>
+              <span class="radio"><i></i><span>Только копировать в буфер</span></span>
+            </div>
+          </div>
+          <div class="group">
+            <div class="row">
+              <span class="label"><span class="dot green"></span>Модель распознавания<span class="sub">Parakeet v3 + словарная модель · 570 МБ · установлена</span></span>
+              <span class="btn">Скачать заново</span>
+            </div>
+          </div>
+          <div class="group">
+            <div class="row">
+              <span class="label">Звуки начала и конца записи</span>
+              <span class="switch"></span>
+            </div>
+            <div class="row">
+              <span class="label">Показывать попап с результатом</span>
+              <span class="switch"></span>
+            </div>
+            <div class="row">
+              <span class="label">Запускать при входе в систему</span>
+              <span class="switch"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. Settings · Dictionary ============ -->
+  <section class="screen">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Настройки — вкладка Dictionary</h2></div>
+    <ul class="annot">
+      <li>Boost terms — чипы; серым — число кириллических алиасов термина. Клик по чипу — редактирование алиасов, «×» — удалить.</li>
+      <li>Replacements — таблица «как слышится → как писать», варианты через запятую, редактирование по двойному клику.</li>
+      <li>«+ / −» внизу, поиск по словарю. Файл один: <code>~/Library/Application Support/Vox/glossary.json</code> — правится и руками.</li>
+    </ul>
+    <div class="canvas">
+      <div class="win" style="width: 480px;">
+        <div class="titlebar">
+          <span class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></span>
+          <span class="win-title">Настройки YAVR</span><span></span>
+        </div>
+        <div class="tabs">
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
+            Основные
+          </span>
+          <span class="tab active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z"/><path d="M5 4a2.5 2.5 0 0 0 0 5h14"/><path d="M9 13h6M9 16h4"/></svg>
+            Словарь
+          </span>
+          <span class="tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>
+            О программе
+          </span>
+        </div>
+        <div class="win-body">
+          <div class="group">
+            <div class="row" style="padding-bottom: 4px; border-bottom: none;">
+              <span class="label">Термины для распознавания<span class="sub">Вытягиваются по звучанию во время диктовки</span></span>
+            </div>
+            <div class="chips">
+              <span class="chip-term">dbt <em>4</em> ×</span>
+              <span class="chip-term">Lightdash <em>4</em> ×</span>
+              <span class="chip-term">Airflow <em>3</em> ×</span>
+              <span class="chip-term">BigQuery <em>2</em> ×</span>
+              <span class="chip-term">Claude Code <em>1</em> ×</span>
+              <span class="chip-term">merge request <em>2</em> ×</span>
+              <span class="chip-term">Kubernetes <em>2</em> ×</span>
+              <span class="chip-term">MCP <em>3</em> ×</span>
+              <span class="chip-term" style="color: var(--win-secondary);">+ ещё 38…</span>
+            </div>
+            <div class="toolbar-foot">
+              <span class="tb-btn">＋</span><span class="tb-btn">−</span>
+              <span class="search">🔍 Поиск</span>
+            </div>
+          </div>
+          <div class="group">
+            <div class="row" style="border-bottom: none; padding-bottom: 4px;">
+              <span class="label">Замены<span class="sub">Правятся после распознавания, падежи учитываются</span></span>
+            </div>
+            <table class="dict-table">
+              <tr><th>Как слышится</th><th></th><th>Как писать</th></tr>
+              <tr><td class="vars">дибити, дбт, дебит</td><td class="arrow">→</td><td class="canon">dbt</td></tr>
+              <tr><td class="vars">лайтдэш, лайтдаш, лайт-дэш</td><td class="arrow">→</td><td class="canon">Lightdash</td></tr>
+              <tr><td class="vars">мердж реквест, мерж реквест</td><td class="arrow">→</td><td class="canon">merge request</td></tr>
+              <tr><td class="vars">ллм, лм, элэлэм</td><td class="arrow">→</td><td class="canon">LLM</td></tr>
+              <tr><td class="vars">га4, га 4</td><td class="arrow">→</td><td class="canon">GA4</td></tr>
+            </table>
+            <div class="toolbar-foot">
+              <span class="tb-btn">＋</span><span class="tb-btn">−</span>
+              <span class="search">🔍 Поиск</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 4. Попап результата ============ -->
+  <section class="screen">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Попап результата</h2></div>
+    <ul class="annot">
+      <li>Появляется под иконкой после распознавания, сам скрывается через ~5 с; открывается и из меню. Отключается тумблером в «Основных».</li>
+      <li>Статус слева — что произошло со вставкой: «Вставлено в Slack» / «Copied (paste unavailable)».</li>
+      <li>Copy — принудительно ещё раз в буфер.</li>
+    </ul>
+    <div class="canvas">
+      <div class="popup">
+        <div class="popup-head">
+          <span>Последняя диктовка</span><span>15:42 · 6.2s</span>
+        </div>
+        <div class="popup-body">
+          <p class="popup-text">Я обновил модель в dbt, потом пересобрал dashboard в Lightdash и запустил backfill в Airflow. Проверь merge request в GitLab.</p>
+          <div class="popup-foot">
+            <span class="pasted-note"><span class="dot green"></span>Вставлено в Slack</span>
+            <span class="btn">Копировать</span>
+          </div>
+        </div>
+      </div>
+      <div class="popup">
+        <div class="popup-head">
+          <span>Последняя диктовка</span><span>15:44 · 3.1s</span>
+        </div>
+        <div class="popup-body">
+          <p class="popup-text">Пароль от стейджинга положил в вольт, ссылка в тредике.</p>
+          <div class="popup-foot">
+            <span class="pasted-note"><span class="dot orange"></span>Скопировано — вставка недоступна (защищённый ввод)</span>
+            <span class="btn">Копировать</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5. Onboarding ============ -->
+  <section class="screen">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Onboarding первого запуска — четыре шага</h2></div>
+    <ul class="annot">
+      <li>Шаг 1: скачивание моделей (~570 MB суммарно, ASR + словарная CTC) с докачкой после обрыва — кнопка Resume вместо Download.</li>
+      <li>Шаги 2–3: системные разрешения. Микрофон — нативный системный диалог по кнопке; Accessibility — кнопка ведёт прямо в нужный раздел System Settings, статус обновляется сам.</li>
+      <li>Шаг 4: тестовая диктовка прямо в окне — убедиться, что весь пайплайн живой. Skip доступен на каждом шаге, кроме первого (без модели работать нечему).</li>
+    </ul>
+    <div class="canvas">
+      <div class="canvas-row">
+        <div>
+          <div class="win ob">
+            <div class="titlebar">
+              <span class="traffic"><i class="r"></i><i class="off"></i><i class="off"></i></span>
+              <span class="win-title">Добро пожаловать в YAVR</span><span></span>
+            </div>
+            <div class="win-body">
+              <span class="ob-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v13M7 7v6M17 7v6M2.5 9.5v2M21.5 9.5v2"/><path d="M12 21v-2" stroke-linecap="round"/></svg>
+              </span>
+              <h3>Загрузка модели распознавания</h3>
+              <p class="lead">YAVR распознаёт речь прямо на этом Mac. Нужна разовая загрузка 570 МБ — ничего не отправляется в интернет.</p>
+              <div class="progress"><i></i></div>
+              <div class="prog-meta"><span>239 МБ из 570 МБ</span><span>осталось ~2 мин</span></div>
+              <div class="steps"><i class="on"></i><i></i><i></i><i></i></div>
+              <div class="ob-foot"><span></span><span class="btn">Пауза</span></div>
+            </div>
+          </div>
+          <p class="ob-label">Шаг 1 · Модель (докачка при обрыве)</p>
+        </div>
+        <div>
+          <div class="win ob">
+            <div class="titlebar">
+              <span class="traffic"><i class="r"></i><i class="off"></i><i class="off"></i></span>
+              <span class="win-title">Добро пожаловать в YAVR</span><span></span>
+            </div>
+            <div class="win-body">
+              <span class="ob-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6"/></svg>
+              </span>
+              <h3>Доступ к микрофону</h3>
+              <p class="lead">YAVR слушает только пока удерживается клавиша диктовки. macOS спросит разрешение один раз.</p>
+              <div class="perm-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/></svg>
+                Микрофон — <b>&nbsp;ещё не разрешён</b>
+              </div>
+              <div class="steps"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+              <div class="ob-foot"><span class="skip">Пропустить</span><span class="btn primary">Разрешить доступ</span></div>
+            </div>
+          </div>
+          <p class="ob-label">Шаг 2 · Микрофон (системный диалог)</p>
+        </div>
+        <div>
+          <div class="win ob">
+            <div class="titlebar">
+              <span class="traffic"><i class="r"></i><i class="off"></i><i class="off"></i></span>
+              <span class="win-title">Добро пожаловать в YAVR</span><span></span>
+            </div>
+            <div class="win-body">
+              <span class="ob-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="13" rx="2"/><path d="M8 21h8M12 18v3M7 9.5h7M7 12.5h4"/></svg>
+              </span>
+              <h3>Вставка в другие приложения</h3>
+              <p class="lead">Чтобы вставлять текст прямо в место курсора, YAVR нужно разрешение «Универсальный доступ». Без него результат только копируется в буфер.</p>
+              <div class="perm-row">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9" r="2.4"/><path d="M12 11.5v4M9 13.5h6"/></svg>
+                Универсальный доступ — <b>&nbsp;выключен</b>
+              </div>
+              <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+              <div class="ob-foot"><span class="skip">Пропустить — только буфер</span><span class="btn primary">Открыть Системные настройки</span></div>
+            </div>
+          </div>
+          <p class="ob-label">Шаг 3 · Accessibility (кнопка сразу в нужный раздел)</p>
+        </div>
+        <div>
+          <div class="win ob">
+            <div class="titlebar">
+              <span class="traffic"><i class="r"></i><i class="off"></i><i class="off"></i></span>
+              <span class="win-title">Добро пожаловать в YAVR</span><span></span>
+            </div>
+            <div class="win-body">
+              <span class="ob-icon" style="color: var(--red); background: rgba(255, 69, 58, 0.12);">
+                <span class="vox rec" style="height: 22px;"><i style="background: currentColor; width: 3.5px;"></i><i style="background: currentColor; width: 3.5px;"></i><i style="background: currentColor; width: 3.5px;"></i><i style="background: currentColor; width: 3.5px;"></i></span>
+              </span>
+              <h3>Проверим!</h3>
+              <p class="lead">Удерживайте <span class="kbd">правый ⌥</span> и скажите фразу с рабочими терминами — отпустите, и YAVR её распознает.</p>
+              <div class="test-box">Я задеплоил витрину в dbt и обновил дашборд в Lightdash<span style="opacity:.5">▍</span></div>
+              <div class="steps"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+              <div class="ob-foot"><span class="skip">Пропустить</span><span class="btn primary">Готово</span></div>
+            </div>
+          </div>
+          <p class="ob-label">Шаг 4 · Тестовая диктовка</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="questions">
+    <h2>Статус согласования</h2>
+    <ol>
+      <li>Дизайн согласован 15.07.2026. Строки интерфейса — на русском.</li>
+      <li>Вкладка «О программе» (атрибуция FluidAudio, Apache 2.0 и Parakeet, CC-BY-4.0) — подтверждена.</li>
+      <li>Попап: два состояния (вставлено / только буфер), автоскрытие ~5 с — подтверждено.</li>
+      <li>Размер загрузки в onboarding: честные 570 МБ — подтверждено.</li>
+    </ol>
+  </div>
+</div>
