@@ -1,4 +1,4 @@
-// Рендер иконки Vox: сквиркл с градиентом + белая волна.
+// Рендер иконки YAVR: сквиркл с градиентом + белая волна.
 // Запуск: swift scripts/render-icon.swift <output-dir>
 import AppKit
 

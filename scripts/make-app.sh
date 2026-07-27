@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Сборка Vox.app из SPM-билда. Подпись ad-hoc (для раздачи без Developer ID).
+# Сборка YAVR.app из SPM-билда. Подпись ad-hoc (для раздачи без Developer ID).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -11,8 +11,8 @@ APP="dist/YAVR.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-cp ".build/$CONFIG/Vox" "$APP/Contents/MacOS/Vox"
-cp -R ".build/$CONFIG/Vox_Vox.bundle" "$APP/Contents/Resources/"
+cp ".build/$CONFIG/YAVR" "$APP/Contents/MacOS/YAVR"
+cp -R ".build/$CONFIG/YAVR_YAVR.bundle" "$APP/Contents/Resources/"
 cp "design/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
@@ -21,9 +21,9 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>Vox</string>
+    <string>YAVR</string>
     <key>CFBundleIdentifier</key>
-    <string>com.yavr.vox</string>
+    <string>com.yavr.yavr</string>
     <key>CFBundleName</key>
     <string>YAVR</string>
     <key>CFBundleDisplayName</key>
@@ -33,9 +33,9 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -48,15 +48,18 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
-# Подпись: стабильная identity «Vox Dev Signing» (TCC-разрешения переживают
-# пересборки), fallback на ad-hoc, если сертификата нет (чужая машина).
+# Подпись. Самоподписанная identity «YAVR Dev Signing» (scripts/make-signing-cert.sh)
+# нужна только при частых пересборках: у ad-hoc подписи меняется хеш, и macOS
+# считает каждую сборку новым приложением — разрешения (микрофон, Универсальный
+# доступ) приходится выдавать заново. Разрешения в любом случае выдаются самому
+# YAVR: bundle id, имя и подпись принадлежат этому приложению и ничему больше.
 SIGN_ID="-"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "Vox Dev Signing"; then
-    SIGN_ID="Vox Dev Signing"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "YAVR Dev Signing"; then
+    SIGN_ID="YAVR Dev Signing"
 fi
 echo "Подпись: $SIGN_ID"
 codesign --force --options runtime \
-    --entitlements "scripts/vox.entitlements" \
+    --entitlements "scripts/yavr.entitlements" \
     --sign "$SIGN_ID" "$APP"
 
 echo "Готово: $APP"

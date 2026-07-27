@@ -1,14 +1,14 @@
 import AVFoundation
 import FluidAudio
 import Foundation
-import VoxCore
+import YAVRCore
 
 // Этап 1: CLI-прототип. Аудиофайл или микрофон -> Parakeet TDT v3 (русский) -> текст.
 // Boosting: отдельный проход CTC keyword spotter + vocabulary rescorer поверх результата.
 //
 // Использование:
-//   vox-cli <audio.wav|m4a> [--no-boost | --boosted] [--glossary <path.json>] [-v]
-//   vox-cli --mic ...   — запись с микрофона, Enter = стоп
+//   yavr-cli <audio.wav|m4a> [--no-boost | --boosted] [--glossary <path.json>] [-v]
+//   yavr-cli --mic ...   — запись с микрофона, Enter = стоп
 // По умолчанию печатает оба варианта: no boost и boosted.
 
 func log(_ message: String) {
@@ -56,8 +56,8 @@ while let arg = argsIterator.next() {
 
 if !useMic {
     guard let audioPath else {
-        print("usage: vox-cli <audio.wav|m4a> [--no-boost | --boosted] [--glossary <path.json>] [-v]")
-        print("       vox-cli --mic [--no-boost | --boosted] [--glossary <path.json>] [-v]")
+        print("usage: yavr-cli <audio.wav|m4a> [--no-boost | --boosted] [--glossary <path.json>] [-v]")
+        print("       yavr-cli --mic [--no-boost | --boosted] [--glossary <path.json>] [-v]")
         exit(64)
     }
     guard FileManager.default.fileExists(atPath: audioPath) else {

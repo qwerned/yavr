@@ -1,12 +1,12 @@
 import AppKit
 import SwiftUI
 
-// Vox — menu-bar утилита голосовой диктовки.
+// YAVR — menu-bar утилита голосовой диктовки.
 // Агентное приложение без Dock-иконки; вся жизнь — в NSStatusItem.
 
 extension Notification.Name {
     /// Результат диктовки (для тестового шага onboarding)
-    static let voxDictation = Notification.Name("voxDictation")
+    static let yavrDictation = Notification.Name("yavrDictation")
 }
 
 @MainActor
@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var recordingStart: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Prefs.migrateLegacyDefaultsIfNeeded()
         Prefs.registerDefaults()
         NSApp.setActivationPolicy(.accessory)
 
@@ -124,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         indicator.hide()
         lastResult = text
         StatsStore.shared.record(text: text)
-        NotificationCenter.default.post(name: .voxDictation, object: text)
+        NotificationCenter.default.post(name: .yavrDictation, object: text)
 
         // Пробел в конце, чтобы последовательные диктовки не склеивались
         var insertText = text
@@ -263,6 +264,6 @@ MainActor.assumeIsolated {
     let delegate = AppDelegate()
     app.delegate = delegate
     // держим делегата живым на всё время работы
-    objc_setAssociatedObject(app, "voxDelegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+    objc_setAssociatedObject(app, "yavrDelegate", delegate, .OBJC_ASSOCIATION_RETAIN)
     app.run()
 }

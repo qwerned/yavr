@@ -1,9 +1,9 @@
 import Foundation
-import VoxCore
+import YAVRCore
 
 // Юнит-тесты ReplacementEngine без XCTest/swift-testing:
 // на машинах с одними Command Line Tools нет тестовых фреймворков,
-// поэтому тесты — обычный исполняемый таргет: swift run vox-tests
+// поэтому тесты — обычный исполняемый таргет: swift run yavr-tests
 
 var failures = 0
 var checks = 0
@@ -22,7 +22,7 @@ func expect(
 
 let engine: ReplacementEngine = {
     let url = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()  // vox-tests
+        .deletingLastPathComponent()  // yavr-tests
         .deletingLastPathComponent()  // Sources
         .deletingLastPathComponent()  // корень
         .appendingPathComponent("glossary.json")

@@ -25,7 +25,7 @@ final class Recorder {
         let input = engine.inputNode
         let format = input.inputFormat(forBus: 0)
         guard format.sampleRate > 0 else {
-            throw VoxError.noMicrophone
+            throw DictationError.noMicrophone
         }
 
         lock.lock(); samples.removeAll(); lock.unlock()
@@ -61,7 +61,7 @@ final class Recorder {
     }
 }
 
-enum VoxError: LocalizedError {
+enum DictationError: LocalizedError {
     case noMicrophone
     case modelNotInstalled
     case recordingTooShort

@@ -40,7 +40,7 @@ struct OnboardingView: View {
         .frame(width: 470, height: 360)
         .onAppear(perform: startPermissionPolling)
         .onDisappear { permissionTimer?.invalidate() }
-        .onReceive(NotificationCenter.default.publisher(for: .voxDictation)) { note in
+        .onReceive(NotificationCenter.default.publisher(for: .yavrDictation)) { note in
             if let text = note.object as? String { testResult = text }
         }
     }

@@ -21,6 +21,22 @@ enum Prefs {
         static let typingSpeed = "typingSpeed"  // слов/мин, для «сэкономлено»
     }
 
+    /// До переименования приложение имело bundle id com.yavr.vox,
+    /// и настройки лежали в его домене. Переносим один раз, чтобы у
+    /// пользователя не слетели триггер, микрофон и прочие предпочтения.
+    /// Вызывать строго до registerDefaults: иначе object(forKey:) вернёт
+    /// зарегистрированный дефолт и старое значение будет пропущено.
+    static func migrateLegacyDefaultsIfNeeded() {
+        let legacyDomain = "com.yavr.vox"
+        let flag = "legacyDefaultsMigrated"
+        guard !d.bool(forKey: flag) else { return }
+        d.set(true, forKey: flag)
+        guard let legacy = d.persistentDomain(forName: legacyDomain) else { return }
+        for (key, value) in legacy where d.object(forKey: key) == nil {
+            d.set(value, forKey: key)
+        }
+    }
+
     static func registerDefaults() {
         d.register(defaults: [
             Key.triggerMode: "hold",

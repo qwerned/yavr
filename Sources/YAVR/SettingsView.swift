@@ -1,6 +1,6 @@
 import ServiceManagement
 import SwiftUI
-import VoxCore
+import YAVRCore
 
 /// Табы окна настроек собираются в NSTabViewController (стиль системных
 /// настроек macOS) — см. AppDelegate.openSettings. Здесь только контент вкладок.
@@ -313,7 +313,7 @@ struct DictionaryTab: View {
                     .disabled(newTerm.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
-            Text("Файл: ~/Library/Application Support/Vox/glossary.json — можно править и руками.")
+            Text("Файл: ~/Library/Application Support/YAVR/glossary.json — можно править и руками.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 4)

@@ -1,7 +1,7 @@
 import Foundation
-import VoxCore
+import YAVRCore
 
-/// Глоссарий в ~/Library/Application Support/Vox/glossary.json.
+/// Глоссарий в ~/Library/Application Support/YAVR/glossary.json.
 /// Дефолтный вшит в бандл и копируется при первом запуске.
 @MainActor
 final class GlossaryStore: ObservableObject {
@@ -9,12 +9,7 @@ final class GlossaryStore: ObservableObject {
 
     @Published private(set) var glossary: Glossary = Glossary(terms: [])
 
-    let fileURL: URL = {
-        let dir = FileManager.default
-            .homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/Vox", isDirectory: true)
-        return dir.appendingPathComponent("glossary.json")
-    }()
+    let fileURL: URL = AppPaths.glossaryFile
 
     private init() {
         bootstrapIfNeeded()

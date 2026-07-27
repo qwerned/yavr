@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-enum VoxState: Equatable {
+enum StatusState: Equatable {
     case idle
     case recording
     case transcribing
@@ -17,7 +17,7 @@ final class StatusItemController {
     private var pulseTimer: Timer?
     private var pulseOn = false
 
-    var state: VoxState = .idle {
+    var state: StatusState = .idle {
         didSet { render() }
     }
 
@@ -117,7 +117,7 @@ final class StatusItemController {
     }
 
     private func symbol(_ name: String, tint: NSColor?) -> NSImage? {
-        var image = NSImage(systemSymbolName: name, accessibilityDescription: "Vox")
+        var image = NSImage(systemSymbolName: name, accessibilityDescription: "YAVR")
         if let tint {
             let config = NSImage.SymbolConfiguration(paletteColors: [tint])
             image = image?.withSymbolConfiguration(config)

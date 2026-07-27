@@ -117,7 +117,7 @@ final class HotkeyMonitor {
             Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
 
         let modifiers = NSEvent.ModifierFlags(rawValue: UInt(Prefs.toggleModifiers))
-        let hotKeyID = EventHotKeyID(signature: OSType(0x564F_5831), id: 1)  // "VOX1"
+        let hotKeyID = EventHotKeyID(signature: OSType(0x5956_5231), id: 1)  // "YVR1"
         RegisterEventHotKey(
             UInt32(Prefs.toggleKeyCode),
             KeyShortcut.carbonModifiers(from: modifiers),

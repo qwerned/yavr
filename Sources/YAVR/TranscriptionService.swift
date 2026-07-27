@@ -1,6 +1,6 @@
 import FluidAudio
 import Foundation
-import VoxCore
+import YAVRCore
 
 /// Загрузка моделей и пайплайн распознавания: ASR -> boosting -> замены.
 actor TranscriptionService {
@@ -33,7 +33,7 @@ actor TranscriptionService {
     /// Ленивая инициализация менеджеров из кэша моделей.
     private func ensureLoaded() async throws {
         if asrManager == nil {
-            guard Self.modelsInstalled() else { throw VoxError.modelNotInstalled }
+            guard Self.modelsInstalled() else { throw DictationError.modelNotInstalled }
             let models = try await AsrModels.downloadAndLoad()
             let manager = AsrManager(config: .default)
             try await manager.loadModels(models)
@@ -49,8 +49,8 @@ actor TranscriptionService {
         samples: [Float], glossaryURL: URL, engine: ReplacementEngine, languageCode: String
     ) async throws -> String {
         try await ensureLoaded()
-        guard let asrManager, let ctcModels else { throw VoxError.modelNotInstalled }
-        guard samples.count > 8000 else { throw VoxError.recordingTooShort }
+        guard let asrManager, let ctcModels else { throw DictationError.modelNotInstalled }
+        guard samples.count > 8000 else { throw DictationError.recordingTooShort }
 
         let language = Language(rawValue: languageCode) ?? .russian
         var decoderState = TdtDecoderState.make(decoderLayers: await asrManager.decoderLayerCount)

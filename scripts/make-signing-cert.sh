@@ -1,11 +1,12 @@
 #!/bin/zsh
-# Одноразовое создание самоподписанного сертификата «Vox Dev Signing»
-# в связке ключей. Даёт стабильную идентичность подписи: TCC-разрешения
-# переживают пересборки. При первом использовании codesign macOS спросит
+# Одноразовое создание самоподписанного сертификата «YAVR Dev Signing»
+# в связке ключей. Нужен только тем, кто пересобирает YAVR: даёт стабильную
+# подпись, чтобы macOS не считала каждую сборку новым приложением и не просила
+# заново выдать разрешения. При первом использовании codesign macOS спросит
 # доступ к ключу — нажать «Разрешить всегда».
 set -euo pipefail
 
-NAME="Vox Dev Signing"
+NAME="YAVR Dev Signing"
 
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "$NAME"; then
     echo "Сертификат «$NAME» уже существует."
@@ -21,7 +22,7 @@ distinguished_name = dn
 x509_extensions = ext
 prompt = no
 [dn]
-CN = Vox Dev Signing
+CN = YAVR Dev Signing
 [ext]
 keyUsage = critical, digitalSignature
 extendedKeyUsage = critical, codeSigning
@@ -31,12 +32,12 @@ CNF
 openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
     -keyout "$TMP/key.pem" -out "$TMP/cert.pem" -config "$TMP/cert.cnf"
 
-openssl pkcs12 -export -out "$TMP/vox.p12" \
-    -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -passout pass:voxdev
+openssl pkcs12 -export -out "$TMP/yavr.p12" \
+    -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -passout pass:yavrdev
 
-security import "$TMP/vox.p12" \
+security import "$TMP/yavr.p12" \
     -k "$HOME/Library/Keychains/login.keychain-db" \
-    -P voxdev \
+    -P yavrdev \
     -T /usr/bin/codesign
 
 echo "Импортирован. Проверка:"

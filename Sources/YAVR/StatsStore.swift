@@ -1,6 +1,6 @@
 import Foundation
 
-/// Статистика диктовок: дневные агрегаты в Application Support/Vox/stats.json.
+/// Статистика диктовок: дневные агрегаты в Application Support/YAVR/stats.json.
 @MainActor
 final class StatsStore: ObservableObject {
     static let shared = StatsStore()
@@ -26,11 +26,7 @@ final class StatsStore: ObservableObject {
     /// Ключ — «yyyy-MM-dd» в локальной таймзоне.
     @Published private(set) var days: [String: DayStats] = [:]
 
-    private let fileURL: URL = {
-        FileManager.default
-            .homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/Vox/stats.json")
-    }()
+    private let fileURL: URL = AppPaths.statsFile
 
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()

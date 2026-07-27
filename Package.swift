@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Vox",
+    name: "YAVR",
     platforms: [
         .macOS(.v14)
     ],
@@ -11,19 +11,19 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "VoxCore"
+            name: "YAVRCore"
         ),
         .executableTarget(
-            name: "vox-cli",
+            name: "yavr-cli",
             dependencies: [
-                "VoxCore",
+                "YAVRCore",
                 .product(name: "FluidAudio", package: "FluidAudio")
             ]
         ),
         .executableTarget(
-            name: "Vox",
+            name: "YAVR",
             dependencies: [
-                "VoxCore",
+                "YAVRCore",
                 .product(name: "FluidAudio", package: "FluidAudio")
             ],
             resources: [
@@ -31,10 +31,10 @@ let package = Package(
             ]
         ),
         // Юнит-тесты как исполняемый таргет: на машинах с одними
-        // Command Line Tools нет XCTest/swift-testing, поэтому swift run vox-tests
+        // Command Line Tools нет XCTest/swift-testing, поэтому swift run yavr-tests
         .executableTarget(
-            name: "vox-tests",
-            dependencies: ["VoxCore"]
+            name: "yavr-tests",
+            dependencies: ["YAVRCore"]
         )
     ]
 )
