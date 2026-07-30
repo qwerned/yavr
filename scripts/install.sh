@@ -21,8 +21,7 @@ sleep 1
 # Перезаписываем только то, что раньше поставил этот же скрипт.
 if [[ -e "$TARGET" ]]; then
     existing_id="$(defaults read "$TARGET/Contents/Info" CFBundleIdentifier 2>/dev/null || echo "")"
-    # com.yavr.vox — id ранних сборок этого же проекта (до переименования).
-    if [[ "$existing_id" != "com.yavr.yavr" && "$existing_id" != "com.yavr.vox" ]]; then
+    if [[ "$existing_id" != "com.yavr.app" ]]; then
         echo "В $TARGET лежит чужое приложение (bundle id: ${existing_id:-неизвестен})."
         echo "Установка отменена — уберите или переименуйте его вручную."
         exit 1

@@ -24,7 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var recordingStart: Date?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Prefs.migrateLegacyDefaultsIfNeeded()
         Prefs.registerDefaults()
         NSApp.setActivationPolicy(.accessory)
 
