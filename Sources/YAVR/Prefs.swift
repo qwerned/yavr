@@ -5,6 +5,8 @@ enum Prefs {
     private static let d = UserDefaults.standard
 
     enum Key {
+        static let recognitionModel = "recognitionModel"
+        static let useDictionary = "useDictionary"
         static let triggerMode = "triggerMode"  // "hold" | "toggle"
         static let holdModifier = "holdModifier"  // "rightOption" | "rightCommand" | "rightControl"
         static let insertMode = "insertMode"  // "paste" | "clipboard"
@@ -23,6 +25,8 @@ enum Prefs {
 
     static func registerDefaults() {
         d.register(defaults: [
+            Key.recognitionModel: RecognitionModel.parakeet.rawValue,
+            Key.useDictionary: true,
             Key.triggerMode: "hold",
             Key.holdModifier: "rightOption",
             Key.insertMode: "paste",
@@ -38,6 +42,14 @@ enum Prefs {
             Key.duckAudio: true,
             Key.typingSpeed: 120,
         ])
+    }
+
+    static var recognitionModel: RecognitionModel {
+        RecognitionModel(rawValue: d.string(forKey: Key.recognitionModel) ?? "") ?? .parakeet
+    }
+
+    static var useDictionary: Bool {
+        d.object(forKey: Key.useDictionary) as? Bool ?? true
     }
 
     static var duckAudio: Bool {
@@ -67,9 +79,11 @@ enum Prefs {
     /// Языки диктовки в UI. Модель Parakeet v3 поддерживает 25+ европейских
     /// языков (enum Language в FluidAudio) — чтобы добавить язык, достаточно
     /// дописать пару (код ISO, название) в этот список.
-    static let dictationLanguages: [(code: String, name: String)] = [
-        ("ru", "Русский"), ("en", "English"),
-    ]
+    static var dictationLanguages: [(code: String, name: String)] {
+        let languages = [(code: "ru", name: "Русский"), (code: "en", name: "English")]
+        return recognitionModel == .whisperTurbo
+            ? [(code: "auto", name: "Автоопределение")] + languages : languages
+    }
 
     static func languageName(_ code: String) -> String {
         dictationLanguages.first { $0.code == code }?.name ?? code

@@ -4,6 +4,7 @@ import SwiftUI
 
 /// Onboarding первого запуска: модель -> микрофон -> Accessibility -> тест.
 struct OnboardingView: View {
+    @AppStorage(Prefs.Key.recognitionModel) private var recognitionModel = RecognitionModel.parakeet.rawValue
     @State private var step = 0
     @State private var downloadProgress = 0.0
     @State private var downloading = false
@@ -51,15 +52,28 @@ struct OnboardingView: View {
         StepLayout(
             icon: "waveform",
             title: "Загрузка модели распознавания",
-            lead: "YAVR распознаёт речь прямо на этом Mac. Нужна разовая загрузка 570 МБ — ничего не отправляется в интернет."
+            lead: "YAVR распознаёт речь прямо на этом Mac. Скачайте модель один раз — аудио остаётся на компьютере."
         ) {
+            Picker("Модель", selection: $recognitionModel) {
+                ForEach(RecognitionModel.allCases) { model in
+                    Text(model.name).tag(model.rawValue)
+                }
+            }
+            .disabled(downloading)
+            .onChange(of: recognitionModel) { _, _ in
+                    if Prefs.recognitionModel == .parakeet && Prefs.language == "auto" {
+                        Prefs.language = "ru"
+                    }
+                modelReady = TranscriptionService.modelsInstalled()
+                downloadError = nil
+            }
             if modelReady {
                 Label("Модель установлена", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
             } else if downloading {
                 VStack(spacing: 4) {
                     ProgressView(value: downloadProgress)
-                    Text("\(Int(downloadProgress * 570)) МБ из 570 МБ")
+                    Text(downloadProgress >= 0.95 ? "Подготовка модели…" : "Загрузка: \(Int(downloadProgress * 100))%")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -188,7 +202,7 @@ struct OnboardingView: View {
             } catch {
                 await MainActor.run {
                     downloading = false
-                    downloadError = "Загрузка прервалась — уже скачанное сохранено, продолжим с того же места."
+                    downloadError = "Не удалось загрузить модель: \(error.localizedDescription)"
                 }
             }
         }

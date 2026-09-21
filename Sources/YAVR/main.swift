@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.hotkeys.start()
+                self?.statusController.refreshLanguageChecks()
             }
         }
 

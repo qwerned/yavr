@@ -64,6 +64,9 @@ struct SubRowLabel: View {
 // MARK: - Основные
 
 struct GeneralTab: View {
+    @AppStorage(Prefs.Key.recognitionModel) private var recognitionModel = RecognitionModel.parakeet.rawValue
+    @AppStorage(Prefs.Key.useDictionary) private var useDictionary = true
+    @State private var downloadError: String?
     @AppStorage(Prefs.Key.triggerMode) private var triggerMode = "hold"
     @AppStorage(Prefs.Key.holdModifier) private var holdModifier = "rightOption"
     @AppStorage(Prefs.Key.insertMode) private var insertMode = "paste"
@@ -158,6 +161,10 @@ struct GeneralTab: View {
             }
 
             Section {
+                Toggle(isOn: $useDictionary) {
+                    RowLabel(icon: "text.book.closed", color: .indigo, text: "Использовать словарь",
+                             sub: "Замены терминов и акустическая коррекция")
+                }
                 LabeledContent {
                     Picker("", selection: $insertMode) {
                         Text("В активное окно + буфер").tag("paste")
@@ -188,11 +195,24 @@ struct GeneralTab: View {
             }
 
             Section("Модель и система") {
+                Picker("Модель", selection: $recognitionModel) {
+                    ForEach(RecognitionModel.allCases) { model in
+                        Text(model.name).tag(model.rawValue)
+                    }
+                }
+                .disabled(downloading)
+                .onChange(of: recognitionModel) { _, _ in
+                    if Prefs.recognitionModel == .parakeet && Prefs.language == "auto" {
+                        Prefs.language = "ru"
+                    }
+                    modelInstalled = TranscriptionService.modelsInstalled()
+                    downloadError = nil
+                }
                 HStack {
                     RowLabel(
                         icon: "waveform", color: .indigo, text: "Модель распознавания",
                         sub: modelInstalled
-                            ? "Parakeet v3 · установлена" : "Не установлена · 570 МБ")
+                            ? "Установлена" : Prefs.recognitionModel.downloadDescription)
                     Spacer()
                     if downloading {
                         ProgressView(value: downloadProgress)
@@ -202,6 +222,9 @@ struct GeneralTab: View {
                             downloadModels()
                         }
                     }
+                }
+                if let downloadError {
+                    Text(downloadError).font(.caption).foregroundStyle(.red)
                 }
                 Toggle(isOn: $launchAtLogin) {
                     RowLabel(
@@ -214,7 +237,6 @@ struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
-        .scrollDisabled(true)
         .frame(width: settingsTabSize.width, height: settingsTabSize.height)
         .onAppear { devices = AudioDevices.inputDevices() }
     }
@@ -222,9 +244,11 @@ struct GeneralTab: View {
     private func downloadModels() {
         downloading = true
         downloadProgress = 0
+        downloadError = nil
+        let model = Prefs.recognitionModel
         Task {
             do {
-                try await TranscriptionService.shared.downloadModels { fraction in
+                try await TranscriptionService.shared.downloadModels(model: model) { fraction in
                     Task { @MainActor in downloadProgress = fraction }
                 }
                 await MainActor.run {
@@ -232,7 +256,10 @@ struct GeneralTab: View {
                     modelInstalled = TranscriptionService.modelsInstalled()
                 }
             } catch {
-                await MainActor.run { downloading = false }
+                await MainActor.run {
+                    downloading = false
+                    downloadError = "Не удалось загрузить модель: \(error.localizedDescription)"
+                }
             }
         }
     }

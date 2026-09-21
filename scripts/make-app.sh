@@ -5,14 +5,17 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
-swift build -c "$CONFIG"
+swift build --build-system native -c "$CONFIG"
 
 APP="dist/YAVR.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp ".build/$CONFIG/YAVR" "$APP/Contents/MacOS/YAVR"
-cp -R ".build/$CONFIG/YAVR_YAVR.bundle" "$APP/Contents/Resources/"
+# Include resource bundles from WhisperKit's tokenizer dependencies as well.
+for bundle in .build/"$CONFIG"/*.bundle; do
+    cp -R "$bundle" "$APP/Contents/Resources/"
+done
 cp "design/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
@@ -33,9 +36,9 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2.1</string>
+    <string>0.3.0</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>4</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -43,7 +46,7 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>NSMicrophoneUsageDescription</key>
     <string>YAVR записывает голос только во время диктовки, распознавание идёт целиком на этом Mac.</string>
     <key>NSHumanReadableCopyright</key>
-    <string>Использует FluidAudio (Apache 2.0) и NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0).</string>
+    <string>Использует FluidAudio (Apache 2.0), NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0), WhisperKit и OpenAI Whisper (MIT).</string>
 </dict>
 </plist>
 PLIST
