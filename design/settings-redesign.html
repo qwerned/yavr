@@ -248,27 +248,27 @@
   .state b { font-size: 12px; font-weight: 600; color: var(--win-text); }
   .state span { font-size: 11px; color: var(--win-secondary); text-align: center; line-height: 1.35; }
 
-  /* Иконка Vox: 4 столбика-волны */
-  .vox { display: inline-flex; align-items: center; gap: 2px; height: 16px; position: relative; }
-  .vox i { width: 2.5px; border-radius: 2px; background: var(--menubar-ink); display: block; }
-  .vox i:nth-child(1) { height: 6px; } .vox i:nth-child(2) { height: 12px; }
-  .vox i:nth-child(3) { height: 9px; }  .vox i:nth-child(4) { height: 5px; }
-  .vox.rec i { background: #FF6961; }
+  /* Иконка YAVR: 4 столбика-волны */
+  .yavr { display: inline-flex; align-items: center; gap: 2px; height: 16px; position: relative; }
+  .yavr i { width: 2.5px; border-radius: 2px; background: var(--menubar-ink); display: block; }
+  .yavr i:nth-child(1) { height: 6px; } .yavr i:nth-child(2) { height: 12px; }
+  .yavr i:nth-child(3) { height: 9px; }  .yavr i:nth-child(4) { height: 5px; }
+  .yavr.rec i { background: #FF6961; }
   @keyframes wave { 0%, 100% { transform: scaleY(0.55); } 50% { transform: scaleY(1.25); } }
-  .vox.rec i { animation: wave 0.9s ease-in-out infinite; transform-origin: center; }
-  .vox.rec i:nth-child(2) { animation-delay: 0.15s; } .vox.rec i:nth-child(3) { animation-delay: 0.3s; }
-  .vox.rec i:nth-child(4) { animation-delay: 0.45s; }
+  .yavr.rec i { animation: wave 0.9s ease-in-out infinite; transform-origin: center; }
+  .yavr.rec i:nth-child(2) { animation-delay: 0.15s; } .yavr.rec i:nth-child(3) { animation-delay: 0.3s; }
+  .yavr.rec i:nth-child(4) { animation-delay: 0.45s; }
   @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
-  .vox.busy i { animation: pulse 1.1s ease-in-out infinite; }
-  .vox.busy i:nth-child(2) { animation-delay: 0.12s; } .vox.busy i:nth-child(3) { animation-delay: 0.24s; }
-  .vox.busy i:nth-child(4) { animation-delay: 0.36s; }
-  .vox.err i { opacity: 0.45; }
-  .vox .badge {
+  .yavr.busy i { animation: pulse 1.1s ease-in-out infinite; }
+  .yavr.busy i:nth-child(2) { animation-delay: 0.12s; } .yavr.busy i:nth-child(3) { animation-delay: 0.24s; }
+  .yavr.busy i:nth-child(4) { animation-delay: 0.36s; }
+  .yavr.err i { opacity: 0.45; }
+  .yavr .badge {
     position: absolute; top: -4px; right: -7px; width: 9px; height: 9px; border-radius: 50%;
     background: var(--orange); border: 1.5px solid rgba(30, 32, 52, 1);
   }
   @media (prefers-reduced-motion: reduce) {
-    .vox.rec i, .vox.busy i { animation: none; }
+    .yavr.rec i, .yavr.busy i { animation: none; }
   }
 
   /* Дропдаун-меню из иконки */
@@ -478,7 +478,7 @@
         <div class="erow"><b>Акустический бустинг</b><span class="switch"></span></div>
         <div class="erow"><b>Алиасы (как звучит)</b><span class="field">лайтдэш, лайтдаш, лайт дэш</span></div>
         <div class="erow"><b>Порог схожести</b><span class="seg"><span class="on">Авто</span><span>0.7</span><span>0.75</span><span>0.8</span></span></div>
-      </div><div class="term"><span class="chev-r">▸</span><span class="canon">merge request</span><span class="repls">мердж реквест, мерж реквест, мр</span><span class="wave">〰</span><span class="del">🗑</span></div><div class="term"><span class="chev-r">▸</span><span class="canon">ChatGPT</span><span class="repls">чат джипити, чатгпт, чат-жпти</span><span class="del">🗑</span></div><div class="term"><span class="chev-r">▸</span><span class="canon">Slack</span><span class="repls">слак, слэк, слаг</span><span class="wave">〰</span><span class="del">🗑</span></div></div><div class="group-note">Замены — «как слышится → как писать», работают всегда. Бустинг — распознавание по звучанию; выключайте, если термин ловит обычные слова.</div><div class="group" style="margin-top:10px;"><div class="row"><span class="field" style="flex:1; color:var(--win-secondary);">Новый термин (например, Kubernetes)</span><span class="btn" style="margin-left:8px;">Добавить</span></div></div><div class="group-note">Файл: ~/Library/Application Support/Vox/glossary.json — можно править и руками.</div></div>
+      </div><div class="term"><span class="chev-r">▸</span><span class="canon">merge request</span><span class="repls">мердж реквест, мерж реквест, мр</span><span class="wave">〰</span><span class="del">🗑</span></div><div class="term"><span class="chev-r">▸</span><span class="canon">ChatGPT</span><span class="repls">чат джипити, чатгпт, чат-жпти</span><span class="del">🗑</span></div><div class="term"><span class="chev-r">▸</span><span class="canon">Slack</span><span class="repls">слак, слэк, слаг</span><span class="wave">〰</span><span class="del">🗑</span></div></div><div class="group-note">Замены — «как слышится → как писать», работают всегда. Бустинг — распознавание по звучанию; выключайте, если термин ловит обычные слова.</div><div class="group" style="margin-top:10px;"><div class="row"><span class="field" style="flex:1; color:var(--win-secondary);">Новый термин (например, Kubernetes)</span><span class="btn" style="margin-left:8px;">Добавить</span></div></div><div class="group-note">Файл: ~/Library/Application Support/YAVR/glossary.json — можно править и руками.</div></div>
 </div><p class="variant-label">Раскрытая строка — редактор термина</p></div></div>
 
   <h2>03 · Статистика</h2>

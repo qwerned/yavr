@@ -40,6 +40,10 @@ security import "$TMP/yavr.p12" \
     -P yavrdev \
     -T /usr/bin/codesign
 
+# Trust only code signing in the current user's trust store.
+security add-trusted-cert -r trustRoot -p codeSign \
+    -k "$HOME/Library/Keychains/login.keychain-db" "$TMP/cert.pem"
+
 echo "Импортирован. Проверка:"
 security find-identity -v -p codesigning | grep "$NAME" || {
     echo "ВНИМАНИЕ: identity не видна (возможно, нужно доверие к сертификату)."

@@ -13,8 +13,8 @@ struct OnboardingView: View {
     @State private var micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     @State private var axGranted = Paster.accessibilityGranted
     @State private var testResult = ""
-    @State private var permissionTimer: Timer?
 
+    var onMicrophoneRequestCompleted: () -> Void
     var onFinish: () -> Void
 
     var body: some View {
@@ -39,8 +39,16 @@ struct OnboardingView: View {
             .padding(.bottom, 14)
         }
         .frame(width: 470, height: 360)
-        .onAppear(perform: startPermissionPolling)
-        .onDisappear { permissionTimer?.invalidate() }
+        .task {
+            while !Task.isCancelled {
+                refreshPermissions()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshPermissions()
+        }
+        .onChange(of: step) { _, _ in refreshPermissions() }
         .onReceive(NotificationCenter.default.publisher(for: .yavrDictation)) { note in
             if let text = note.object as? String { testResult = text }
         }
@@ -126,7 +134,11 @@ struct OnboardingView: View {
             } else {
                 Button("Разрешить доступ") {
                     AVCaptureDevice.requestAccess(for: .audio) { granted in
-                        Task { @MainActor in micGranted = granted }
+                        Task { @MainActor in
+                            micGranted = granted
+                            if granted && step == 1 { step = 2 }
+                            onMicrophoneRequestCompleted()
+                        }
                     }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -140,7 +152,7 @@ struct OnboardingView: View {
         StepLayout(
             icon: "macwindow.on.rectangle",
             title: "Вставка в другие приложения",
-            lead: "Чтобы вставлять текст прямо в место курсора, YAVR нужно разрешение «Универсальный доступ». Без него результат только копируется в буфер."
+            lead: "Включите YAVR в разделе «Универсальный доступ». Если приложения нет в списке, добавьте его кнопкой «+». Без разрешения результат только копируется в буфер."
         ) {
             Label(
                 axGranted ? "Универсальный доступ — включён" : "Универсальный доступ — выключен",
@@ -153,7 +165,6 @@ struct OnboardingView: View {
                 Button("Дальше") { step = 3 }.keyboardShortcut(.defaultAction)
             } else {
                 Button("Открыть Системные настройки") {
-                    Paster.requestAccessibility()
                     let url = URL(
                         string:
                             "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
@@ -208,14 +219,11 @@ struct OnboardingView: View {
         }
     }
 
-    /// Accessibility выдаётся в Системных настройках — опрашиваем статус.
-    private func startPermissionPolling() {
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-            Task { @MainActor in
-                axGranted = Paster.accessibilityGranted
-                micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-            }
-        }
+    /// Refresh immediately on returning from Settings, including repeated onboarding.
+    private func refreshPermissions() {
+        axGranted = Paster.accessibilityGranted
+        micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        if step == 2 && axGranted { step = 3 }
     }
 
 }

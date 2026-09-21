@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import YAVRCore
 
 // YAVR — menu-bar утилита голосовой диктовки.
 // Агентное приложение без Dock-иконки; вся жизнь — в NSStatusItem.
@@ -10,7 +11,7 @@ extension Notification.Name {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusController: StatusItemController!
     private let hotkeys = HotkeyMonitor()
     private let recorder = Recorder()
@@ -19,11 +20,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let ducker = AudioDucker()
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
+    private var onboardingRestoreTask: Task<Void, Never>?
 
     private var lastResult: String = ""
     private var recordingStart: Date?
+    private var session = DictationSession()
+    private var transcriptionTask: Task<Void, Never>?
+    private var terminationSignal: DispatchSourceSignal?
+    private var accessibilityTimer: Timer?
+    private var lastAccessibilityGranted = false
+
+    func applicationWillTerminate(_ notification: Notification) {
+        accessibilityTimer?.invalidate()
+        transcriptionTask?.cancel()
+        session.cancel()
+        _ = stopRecordingResources()
+        hotkeys.stop()
+    }
+
+    @discardableResult private func stopRecordingResources() -> [Float] {
+        let samples = recorder.stop()
+        ducker.restore()
+        recordingStart = nil
+        indicator.hide()
+        return samples
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The installer sends SIGTERM. Route it through AppKit cleanup so audio
+        // volume is restored even when an update happens during a recording.
+        signal(SIGTERM, SIG_IGN)
+        let terminationSignal = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        terminationSignal.setEventHandler { NSApp.terminate(nil) }
+        terminationSignal.resume()
+        self.terminationSignal = terminationSignal
         Prefs.registerDefaults()
         NSApp.setActivationPolicy(.accessory)
 
@@ -37,19 +67,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onHoldStart = { [weak self] in self?.beginRecording() }
         hotkeys.onHoldEnd = { [weak self] in self?.finishRecording() }
         hotkeys.onToggle = { [weak self] in self?.toggleDictationInternal() }
+        hotkeys.isRecording = { [weak self] in self?.session.phase == .recording }
         hotkeys.start()
+        lastAccessibilityGranted = Paster.accessibilityGranted
+        let accessibilityTimer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let granted = Paster.accessibilityGranted
+                guard granted != self.lastAccessibilityGranted else { return }
+                self.lastAccessibilityGranted = granted
+                self.hotkeys.refreshConfiguration(permissionChanged: true)
+                self.refreshIdleState()
+            }
+        }
+        RunLoop.main.add(accessibilityTimer, forMode: .common)
+        self.accessibilityTimer = accessibilityTimer
 
         // Перезапуск монитора при смене настроек триггера
         NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.hotkeys.start()
+                self?.hotkeys.refreshConfiguration()
                 self?.statusController.refreshLanguageChecks()
             }
         }
 
         refreshIdleState()
+        if Prefs.onboardingDone { LoginItemController.shared.configureAfterOnboarding() }
 
         if !Prefs.onboardingDone || !TranscriptionService.modelsInstalled() {
             openOnboarding()
@@ -59,11 +104,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Диктовка
 
     private func beginRecording() {
-        guard !recorder.isRecording else { return }
+        guard session.phase == .idle else { return }
         guard TranscriptionService.modelsInstalled() else {
             statusController.state = .error("Модель не установлена — откройте настройки")
             return
         }
+        guard let sessionID = session.begin() else { return }
         do {
             if Prefs.duckAudio { ducker.duck() }
             try recorder.start(microphoneUID: Prefs.microphoneUID)
@@ -72,19 +118,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             indicator.show(.recording)
             if Prefs.playSounds { NSSound(named: "Tink")?.play() }
         } catch {
+            _ = stopRecordingResources()
+            session.finish(sessionID)
+            hotkeys.refreshConfiguration()
             statusController.state = .error(error.localizedDescription)
         }
     }
 
     private func finishRecording() {
-        guard recorder.isRecording else { return }
-        let samples = recorder.stop()
-        ducker.restore()
+        guard session.phase == .recording, let sessionID = session.transcribe() else { return }
         let duration = recordingStart.map { Date().timeIntervalSince($0) } ?? 0
-        recordingStart = nil
+        let samples = stopRecordingResources()
+        hotkeys.refreshConfiguration()
         if Prefs.playSounds { NSSound(named: "Pop")?.play() }
 
         guard samples.count > 8000 else {
+            session.finish(sessionID)
             indicator.hide()
             refreshIdleState()
             return
@@ -97,18 +146,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let glossaryURL = GlossaryStore.shared.fileURL
         let engine = GlossaryStore.shared.replacementEngine
         let language = Prefs.language
+        let model = Prefs.recognitionModel
+        let useDictionary = Prefs.useDictionary
 
-        Task {
+        transcriptionTask = Task {
             do {
                 let text = try await TranscriptionService.shared.transcribe(
                     samples: samples, glossaryURL: glossaryURL, engine: engine,
-                    languageCode: language)
-                await MainActor.run { self.deliver(text: text, duration: duration) }
+                    languageCode: language, model: model, useDictionary: useDictionary)
+                guard !Task.isCancelled, self.session.finish(sessionID) else { return }
+                self.transcriptionTask = nil
+                self.deliver(text: text, duration: duration)
             } catch {
-                await MainActor.run {
-                    self.indicator.hide()
-                    self.statusController.state = .error(error.localizedDescription)
-                }
+                guard self.session.finish(sessionID) else { return }
+                self.transcriptionTask = nil
+                self.indicator.hide()
+                self.statusController.state = .error(error.localizedDescription)
             }
         }
     }
@@ -167,6 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// idle или degraded — если вставка выбрана, но невозможна.
     private func refreshIdleState() {
+        guard session.phase == .idle else { return }
         if Prefs.insertMode == "paste" && !Paster.accessibilityGranted {
             statusController.state = .degraded(
                 "Вставка недоступна (нет Универсального доступа) — только буфер")
@@ -242,21 +296,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func openOnboarding() {
         if onboardingWindow == nil {
             let hosting = NSHostingController(
-                rootView: OnboardingView { [weak self] in
+                rootView: OnboardingView(onMicrophoneRequestCompleted: { [weak self] in
+                    self?.restoreOnboardingAfterPermissionPrompt()
+                }, onFinish: { [weak self] in
                     Prefs.onboardingDone = true
+                    LoginItemController.shared.configureAfterOnboarding()
                     self?.onboardingWindow?.close()
                     self?.refreshIdleState()
-                })
+                }))
             let window = NSWindow(contentViewController: hosting)
             window.title = "Добро пожаловать в YAVR"
             window.styleMask.remove(.resizable)
             window.isReleasedWhenClosed = false
+            window.hidesOnDeactivate = false
+            window.delegate = self
             onboardingWindow = window
         }
-        NSApp.activate(ignoringOtherApps: true)
+        // Keep setup reachable in the Dock while macOS owns the permission prompt.
+        NSApp.setActivationPolicy(.regular)
         onboardingWindow?.center()
-        onboardingWindow?.makeKeyAndOrderFront(nil)
+        presentOnboardingWindow()
     }
+
+    private func restoreOnboardingAfterPermissionPrompt() {
+        onboardingRestoreTask?.cancel()
+        onboardingRestoreTask = Task { @MainActor [weak self] in
+            // The authorization callback can precede dismissal of the system prompt.
+            // Let that transition finish before asking AppKit to restore our window.
+            do { try await Task.sleep(for: .milliseconds(500)) }
+            catch { return }
+            self?.presentOnboardingWindow()
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+            window === onboardingWindow else { return }
+        onboardingRestoreTask?.cancel()
+        onboardingRestoreTask = nil
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !Prefs.onboardingDone { openOnboarding() }
+        else { openSettings() }
+        return true
+    }
+
+    private func presentOnboardingWindow() {
+        guard let window = onboardingWindow else { return }
+        // The system microphone prompt can leave this accessory app behind other apps.
+        // Restore focus only after the explicit request, never from permission polling.
+        NSApp.activate(ignoringOtherApps: true)
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+    }
+}
+
+if CommandLine.arguments.contains("--check-installation") {
+    do { try AppResources.checkInstallation(); exit(0) }
+    catch { fputs("Installation check failed: \(error)\n", stderr); exit(1) }
 }
 
 MainActor.assumeIsolated {

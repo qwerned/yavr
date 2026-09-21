@@ -132,7 +132,10 @@ func applyBoosting(
     }
 
     // Загружает словарь и CTC-модели (первый запуск скачает ctc110m с HuggingFace)
-    let (customVocab, ctcModels) = try await CustomVocabularyContext.loadWithCtcTokens(from: glossaryFile)
+    guard let (customVocab, ctcModels) = try await AcousticVocabulary.withFile(
+        from: URL(fileURLWithPath: glossaryFile), operation: {
+            try await CustomVocabularyContext.loadWithCtcTokens(from: $0.path)
+        }) else { return result }
     if verbose { log("glossary: \(customVocab.terms.count) terms") }
 
     let blankId = ctcModels.vocabulary.count
@@ -176,7 +179,11 @@ func applyBoosting(
         // rescoreOutput.text пересобран из слов и теряет пунктуацию,
         // поэтому применяем замены к исходному тексту сами.
         return ASRResult(
-            text: applyReplacements(rescoreOutput.replacements, to: result.text),
+            text: AcousticReplacements.apply(to: result.text, rescored: rescoreOutput.text,
+                changes: rescoreOutput.replacements.compactMap { item in
+                    guard item.shouldReplace, let replacement = item.replacementWord else { return nil }
+                    return .init(original: item.originalWord, replacement: replacement)
+                }),
             confidence: result.confidence,
             duration: result.duration,
             processingTime: result.processingTime,
@@ -186,27 +193,6 @@ func applyBoosting(
     return result
 }
 
-/// Применяет замены рескорера к исходному тексту, сохраняя пунктуацию
-/// по краям заменяемого слова («айрфлоу.» -> «Airflow.»).
-func applyReplacements(
-    _ replacements: [VocabularyRescorer.RescoringResult],
-    to transcript: String
-) -> String {
-    var text = transcript
-    // Длинные оригиналы первыми, чтобы «мердж реквест» не разъедало по частям
-    let applicable = replacements
-        .filter { $0.shouldReplace && $0.replacementWord != nil }
-        .sorted { $0.originalWord.count > $1.originalWord.count }
-    for replacement in applicable {
-        let original = replacement.originalWord
-        guard let range = text.range(of: original) else { continue }
-        let leading = String(original.prefix(while: { !$0.isLetter && !$0.isNumber }))
-        let trailing = String(
-            original.reversed().prefix(while: { !$0.isLetter && !$0.isNumber }).reversed())
-        text.replaceSubrange(range, with: leading + replacement.replacementWord! + trailing)
-    }
-    return text
-}
 
 do {
     let modelDir = FileManager.default

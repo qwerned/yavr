@@ -73,7 +73,7 @@ struct GeneralTab: View {
     @AppStorage(Prefs.Key.microphoneUID) private var microphoneUID = ""
     @AppStorage(Prefs.Key.playSounds) private var playSounds = true
     @AppStorage(Prefs.Key.showPopup) private var showPopup = true
-    @AppStorage(Prefs.Key.launchAtLogin) private var launchAtLogin = true
+    @ObservedObject private var loginItem = LoginItemController.shared
     @AppStorage(Prefs.Key.language) private var language = "ru"
     @AppStorage(Prefs.Key.shortcutBehavior) private var shortcutBehavior = "hold"
     @AppStorage(Prefs.Key.duckAudio) private var duckAudio = true
@@ -226,19 +226,28 @@ struct GeneralTab: View {
                 if let downloadError {
                     Text(downloadError).font(.caption).foregroundStyle(.red)
                 }
-                Toggle(isOn: $launchAtLogin) {
+                Toggle(isOn: Binding(get: { loginItem.enabled }, set: { loginItem.setEnabled($0) })) {
                     RowLabel(
                         icon: "rectangle.portrait.and.arrow.right", color: .gray,
                         text: "Запускать при входе")
                 }
-                .onChange(of: launchAtLogin) { _, enabled in
-                    applyLaunchAtLogin(enabled)
+                if loginItem.needsApproval {
+                    Button("Разрешить автозапуск в Системных настройках") { loginItem.openSettings() }
+                }
+                if let error = loginItem.error {
+                    Text(error).font(.caption).foregroundStyle(.red)
                 }
             }
         }
         .formStyle(.grouped)
         .frame(width: settingsTabSize.width, height: settingsTabSize.height)
-        .onAppear { devices = AudioDevices.inputDevices() }
+        .onAppear {
+            devices = AudioDevices.inputDevices()
+            loginItem.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loginItem.refresh()
+        }
     }
 
     private func downloadModels() {
@@ -264,16 +273,7 @@ struct GeneralTab: View {
         }
     }
 
-    private func applyLaunchAtLogin(_ enabled: Bool) {
-        // Работает только из собранного .app-бандла; при dev-запуске молча пропускаем
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-        } catch {}
-    }
+
 }
 
 // MARK: - Словарь
@@ -327,7 +327,7 @@ struct DictionaryTab: View {
             .listStyle(.inset)
             .frame(maxHeight: .infinity)
 
-            Text("Замены — «как слышится → как писать», работают всегда. Бустинг — распознавание по звучанию; выключайте, если термин ловит обычные слова.")
+            Text("Замены применяются при включённом словаре. Акустический бустинг работает в Parakeet; его можно отключить для каждого термина.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
@@ -460,7 +460,7 @@ private struct TermRow: View {
     private func load() {
         variantsText = (term.replacements ?? []).joined(separator: ", ")
         aliasesText = (term.aliases ?? []).joined(separator: ", ")
-        boostEnabled = !(term.aliases ?? []).isEmpty
+        boostEnabled = term.usesAcousticBoost
         threshold = term.minSimilarity.map { Double($0) } ?? 0.0
     }
 
@@ -471,13 +471,14 @@ private struct TermRow: View {
     }
 
     private func commit() {
-        let aliases = boostEnabled ? parse(aliasesText) : []
+        let aliases = parse(aliasesText)
         onUpdate(
             GlossaryTerm(
                 text: term.text,
                 aliases: aliases,
                 minSimilarity: threshold == 0 ? nil : Float(threshold),
-                replacements: parse(variantsText)))
+                replacements: parse(variantsText),
+                boostEnabled: boostEnabled))
     }
 }
 

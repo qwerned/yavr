@@ -1,10 +1,12 @@
 #!/bin/zsh
-# Сборка YAVR.app из SPM-билда. Подпись ad-hoc (для раздачи без Developer ID).
+# Сборка YAVR.app со стабильной локальной подписью YAVR Dev Signing.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
+swift package resolve
+python3 scripts/prepare-resource-bundles.py
 swift build --build-system native -c "$CONFIG"
 
 APP="dist/YAVR.app"
@@ -13,8 +15,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp ".build/$CONFIG/YAVR" "$APP/Contents/MacOS/YAVR"
 # Include resource bundles from WhisperKit's tokenizer dependencies as well.
-for bundle in .build/"$CONFIG"/*.bundle; do
-    cp -R "$bundle" "$APP/Contents/Resources/"
+for bundle in YAVR_YAVR.bundle swift-transformers_Hub.bundle swift-crypto_Crypto.bundle; do
+    cp -R ".build/$CONFIG/$bundle" "$APP/Contents/Resources/"
 done
 cp "design/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
@@ -36,9 +38,9 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.0</string>
+    <string>0.3.6</string>
     <key>CFBundleVersion</key>
-    <string>4</string>
+    <string>10</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -56,13 +58,16 @@ PLIST
 # считает каждую сборку новым приложением — разрешения (микрофон, Универсальный
 # доступ) приходится выдавать заново. Разрешения в любом случае выдаются самому
 # YAVR: bundle id, имя и подпись принадлежат этому приложению и ничему больше.
-SIGN_ID="-"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "YAVR Dev Signing"; then
-    SIGN_ID="YAVR Dev Signing"
+SIGN_ID="YAVR Dev Signing"
+if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$SIGN_ID\""; then
+    echo "Нужен сертификат $SIGN_ID: запустите ./scripts/make-signing-cert.sh"
+    exit 1
 fi
 echo "Подпись: $SIGN_ID"
 codesign --force --options runtime \
     --entitlements "scripts/yavr.entitlements" \
     --sign "$SIGN_ID" "$APP"
 
+"$APP/Contents/MacOS/YAVR" --check-installation
+codesign --verify --deep --strict "$APP"
 echo "Готово: $APP"

@@ -75,11 +75,10 @@ actor TranscriptionService {
 
     /// Полный пайплайн: сэмплы 16 kHz -> текст с терминами.
     func transcribe(
-        samples: [Float], glossaryURL: URL, engine: ReplacementEngine, languageCode: String
+        samples: [Float], glossaryURL: URL, engine: ReplacementEngine, languageCode: String,
+        model: RecognitionModel = Prefs.recognitionModel, useDictionary: Bool = Prefs.useDictionary
     ) async throws -> String {
         guard samples.count > 8000 else { throw DictationError.recordingTooShort }
-        let model = Prefs.recognitionModel
-        let useDictionary = Prefs.useDictionary
         if model == .whisperTurbo {
             guard Self.modelsInstalled(model: model) else { throw DictationError.modelNotInstalled }
             asrManager = nil
@@ -121,8 +120,9 @@ actor TranscriptionService {
         result: ASRResult, samples: [Float], glossaryURL: URL, ctcModels: CtcModels
     ) async -> String {
         do {
-            let (customVocab, models) = try await CustomVocabularyContext.loadWithCtcTokens(
-                from: glossaryURL.path)
+            guard let (customVocab, models) = try await AcousticVocabulary.withFile(from: glossaryURL, operation: {
+                try await CustomVocabularyContext.loadWithCtcTokens(from: $0.path)
+            }) else { return result.text }
             _ = models  // уже загружены, повторный вызов берёт кэш
 
             let blankId = ctcModels.vocabulary.count
@@ -152,29 +152,14 @@ actor TranscriptionService {
                 minSimilarity: vocabConfig.minSimilarity)
 
             guard output.wasModified else { return result.text }
-            return Self.applyReplacements(output.replacements, to: result.text)
+            return AcousticReplacements.apply(to: result.text, rescored: output.text,
+                changes: output.replacements.compactMap { item in
+                    guard item.shouldReplace, let replacement = item.replacementWord else { return nil }
+                    return .init(original: item.originalWord, replacement: replacement)
+                })
         } catch {
             return result.text
         }
     }
 
-    /// Применяет замены рескорера к исходному тексту, сохраняя пунктуацию
-    /// (пересобранный rescoreOutput.text её теряет).
-    static func applyReplacements(
-        _ replacements: [VocabularyRescorer.RescoringResult], to transcript: String
-    ) -> String {
-        var text = transcript
-        let applicable = replacements
-            .filter { $0.shouldReplace && $0.replacementWord != nil }
-            .sorted { $0.originalWord.count > $1.originalWord.count }
-        for replacement in applicable {
-            let original = replacement.originalWord
-            guard let range = text.range(of: original) else { continue }
-            let leading = String(original.prefix(while: { !$0.isLetter && !$0.isNumber }))
-            let trailing = String(
-                original.reversed().prefix(while: { !$0.isLetter && !$0.isNumber }).reversed())
-            text.replaceSubrange(range, with: leading + replacement.replacementWord! + trailing)
-        }
-        return text
-    }
 }

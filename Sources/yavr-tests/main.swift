@@ -206,6 +206,96 @@ do {  // repeatedTerm
     }
 
 
+// Regression coverage for the project-wide review.
+do {
+    typealias Change = AcousticReplacements.Change
+    func rescore(_ original: String, _ output: String, _ changes: [Change]) -> String {
+        AcousticReplacements.apply(to: original, rescored: output, changes: changes)
+    }
+    let dag = Change(original: "даг", replacement: "DAG")
+    expect(rescore("дагестан даг", "дагестан DAG", [dag]), "дагестан DAG", "whole-word acoustic replacement")
+    expect(rescore("даг, даг!", "даг DAG", [dag]), "даг, DAG!", "second occurrence")
+    expect(rescore("даг, даг!", "DAG даг", [dag]), "DAG, даг!", "first occurrence")
+    expect(rescore("(даг), даг!", "DAG DAG", [dag, dag]), "(DAG), DAG!", "repeated accepted replacements")
+    expect(rescore("дагестан", "DAGестан", [dag]), "дагестан", "reject substring output")
+    expect(rescore("создал «мердж реквест»!", "создал merge request",
+                   [.init(original: "мердж реквест", replacement: "merge request")]),
+           "создал «merge request»!", "multi-word punctuation")
+    expect(rescore("мердж, реквест", "merge request",
+                   [.init(original: "мердж реквест", replacement: "merge request")]),
+           "мердж, реквест", "do not erase internal punctuation")
+    expect(rescore("даг\nдаг", "даг DAG", [dag]), "даг\nDAG", "preserve line breaks")
+    expect(rescore("даг даг", "DAG", [dag]), "даг даг", "reject unexplained deletion")
+    expect(rescore("даг даг", "даг", [.init(original: "даг даг", replacement: "даг"),
+                                      .init(original: "даг", replacement: "даг")]),
+           "даг", "explicit span contraction")
+    expect(rescore("", "", []), "")
+}
+
+do {
+    var session = DictationSession()
+    let first = session.begin()!
+    expect(String(session.begin() == nil), "true", "block overlapping recording")
+    expect(String(session.transcribe() == first), "true")
+    expect(String(session.begin() == nil), "true", "block start during recognition")
+    expect(String(session.finish(UUID())), "false", "ignore unrelated completion")
+    expect(String(session.phase == .transcribing), "true")
+    expect(String(session.finish(first)), "true")
+    let second = session.begin()!
+    expect(String(session.finish(first)), "false", "ignore old completion during new session")
+    expect(String(session.id == second), "true")
+    session.cancel()
+    expect(String(session.phase == .idle), "true", "cleanup after failure or termination")
+    expect(String(session.finish(second)), "false", "ignore cancelled completion")
+    expect(String(session.transcribe() == nil), "true", "cannot transcribe idle session")
+}
+
+do {
+    let legacy = try JSONDecoder().decode(Glossary.self, from: Data(#"{"terms":[{"text":"Airflow","aliases":["эйрфлоу"]},{"text":"DAG","aliases":[]}]}"#.utf8))
+    expect(legacy.acousticGlossary.terms.map(\.text).joined(separator: ","), "Airflow", "legacy boost migration")
+    let disabled = GlossaryTerm(text: "Airflow", aliases: ["эйрфлоу"], replacements: ["эйрфлоу"], boostEnabled: false)
+    let enabled = GlossaryTerm(text: "DAG", aliases: [], boostEnabled: true)
+    let glossary = Glossary(terms: [disabled, enabled])
+    expect(glossary.acousticGlossary.terms.map(\.text).joined(separator: ","), "DAG")
+    expect(ReplacementEngine(glossary: glossary).apply(to: "эйрфлоу"), "Airflow", "text replacements independent of boost")
+    let roundtrip = try JSONDecoder().decode(Glossary.self, from: JSONEncoder().encode(glossary))
+    expect(roundtrip.terms[0].aliases?.first ?? "", "эйрфлоу", "disabled aliases survive save")
+    expect(String(roundtrip.terms[0].usesAcousticBoost), "false")
+
+    let source = FileManager.default.temporaryDirectory.appendingPathComponent("yavr-test-\(UUID()).json")
+    defer { try? FileManager.default.removeItem(at: source) }
+    try JSONEncoder().encode(glossary).write(to: source)
+    var temporary: URL?
+    let count = try await AcousticVocabulary.withFile(from: source) { file in
+        temporary = file
+        return try Glossary.load(from: file).terms.count
+    }
+    expect(String(count ?? -1), "1", "only enabled terms reach acoustic loader")
+    expect(String(FileManager.default.fileExists(atPath: temporary!.path)), "false", "temporary vocabulary removed")
+    enum Expected: Error { case failed }
+    do {
+        _ = try await AcousticVocabulary.withFile(from: source) { file -> Int in
+            temporary = file
+            throw Expected.failed
+        }
+    } catch Expected.failed {}
+    expect(String(FileManager.default.fileExists(atPath: temporary!.path)), "false", "cleanup after loading error")
+    try JSONEncoder().encode(Glossary(terms: [disabled])).write(to: source)
+    let empty = try await AcousticVocabulary.withFile(from: source) { _ in 99 }
+    expect(String(empty == nil), "true", "skip acoustic loader for disabled vocabulary")
+}
+
+do {
+    // Left Option remains down after right Option is released; aggregate ALT is still set.
+    expect(String(RightModifier.option.isPressed(flags: 0x80000 | 0x20 | 0x40)), "true")
+    expect(String(RightModifier.option.isPressed(flags: 0x80000 | 0x20)), "false")
+    expect(String(RightModifier.option.isPressed(flags: 0)), "false")
+    expect(String(RightModifier.command.isPressed(flags: 0x100000 | 0x08)), "false")
+    expect(String(RightModifier.command.isPressed(flags: 0x100000 | 0x08 | 0x10)), "true")
+    expect(String(RightModifier.control.isPressed(flags: 0x40000 | 0x01)), "false")
+    expect(String(RightModifier.control.isPressed(flags: 0x40000 | 0x01 | 0x2000)), "true")
+}
+
 if failures == 0 {
     print("OK: \(checks) checks passed")
 } else {

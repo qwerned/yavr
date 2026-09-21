@@ -22,7 +22,7 @@ final class GlossaryStore: ObservableObject {
         guard !fm.fileExists(atPath: fileURL.path) else { return }
         try? fm.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let bundled = Bundle.module.url(forResource: "glossary", withExtension: "json") {
+        if let bundled = try? AppResources.glossaryURL() {
             try? fm.copyItem(at: bundled, to: fileURL)
         }
     }

@@ -7,6 +7,9 @@ public struct GlossaryTerm: Codable, Sendable {
     public let text: String
     /// Фонетические алиасы для keyword boosting («лайтдэш»)
     public let aliases: [String]?
+    public let boostEnabled: Bool?
+
+    public var usesAcousticBoost: Bool { boostEnabled ?? !(aliases ?? []).isEmpty }
     /// Per-term порог схожести для рескорера FluidAudio
     public let minSimilarity: Float?
     /// Варианты для детерминированной текстовой замены («лайтдэш» -> «Lightdash»).
@@ -18,8 +21,10 @@ public struct GlossaryTerm: Codable, Sendable {
         text: String,
         aliases: [String]? = nil,
         minSimilarity: Float? = nil,
-        replacements: [String]? = nil
+        replacements: [String]? = nil,
+        boostEnabled: Bool? = nil
     ) {
+        self.boostEnabled = boostEnabled
         self.text = text
         self.aliases = aliases
         self.minSimilarity = minSimilarity
@@ -41,6 +46,10 @@ public struct Glossary: Codable, Sendable {
     public static func load(from url: URL) throws -> Glossary {
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(Glossary.self, from: data)
+    }
+
+    public var acousticGlossary: Glossary {
+        Glossary(minTermLength: minTermLength, terms: terms.filter(\.usesAcousticBoost))
     }
 
     /// Правила замен для ReplacementEngine: варианты из replacements

@@ -17,12 +17,6 @@ enum Paster {
         IsSecureEventInputEnabled()
     }
 
-    /// Запрашивает Accessibility с системным промптом.
-    static func requestAccessibility() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        AXIsProcessTrustedWithOptions(options as CFDictionary)
-    }
-
     /// Кладёт текст в буфер и, если режим «вставлять» и это возможно,
     /// симулирует Cmd+V, после чего восстанавливает прежний буфер.
     @MainActor
