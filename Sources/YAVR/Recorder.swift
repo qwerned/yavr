@@ -6,8 +6,9 @@ import os.log
 private let recLog = Logger(subsystem: "com.yavr", category: "Recorder")
 
 /// Запись с микрофона: 16 kHz mono Float32, лимит длительности.
-/// Engine держится живым между записями — пересоздание AVAudioEngine
-/// через раз не получает tap-буферы от CoreAudio.
+/// Объект engine переиспользуется между записями — пересоздание
+/// AVAudioEngine через раз не получает tap-буферы от CoreAudio. Но между
+/// записями engine остановлен, иначе микрофон занят и горит индикатор.
 final class Recorder {
     static let maxDuration: TimeInterval = 5 * 60
 
@@ -39,16 +40,10 @@ final class Recorder {
             }
             let newEngine = AVAudioEngine()
             AudioDevices.setInputDevice(uid: microphoneUID, for: newEngine)
-            newEngine.prepare()
-            try newEngine.start()
             engine = newEngine
             converter = AudioConverter()
             lastMicUID = microphoneUID
             recLog.notice("start: created new engine")
-        } else if let engine, !engine.isRunning {
-            engine.prepare()
-            try engine.start()
-            recLog.notice("start: restarted existing engine")
         }
 
         guard let engine else { return }
@@ -77,6 +72,17 @@ final class Recorder {
             }
         }
 
+        // Запуск после установки tap — тот же порядок, что до переиспользования.
+        if !engine.isRunning {
+            engine.prepare()
+            do {
+                try engine.start()
+            } catch {
+                input.removeTap(onBus: 0)
+                throw error
+            }
+        }
+
         recording = true
         recLog.notice("start: recording")
 
@@ -100,14 +106,16 @@ final class Recorder {
     }
 
     /// Останавливает запись и отдаёт накопленные сэмплы.
-    /// Engine остаётся живым для следующей записи.
+    /// Engine останавливается (микрофон освобождается), объект остаётся
+    /// для следующей записи.
     func stop() -> [Float] {
         limitTimer?.invalidate()
         limitTimer = nil
         guard let engine, recording else { return [] }
         engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
         recording = false
-        recLog.notice("stop: tap removed, engine kept alive")
+        recLog.notice("stop: tap removed, engine stopped")
         lock.lock()
         defer { samples.removeAll(); lock.unlock() }
         return samples
