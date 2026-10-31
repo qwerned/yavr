@@ -203,9 +203,7 @@ struct GeneralTab: View {
                 .disabled(downloading)
                 .onChange(of: recognitionModel) { _, _ in
                     let current = Prefs.recognitionModel
-                    if current == .parakeet && Prefs.language == "auto" {
-                        Prefs.language = "ru"
-                    }
+                    language = Prefs.language  // код прошлой модели → понятный новой
                     modelInstalled = current.needsLocalModel ? TranscriptionService.modelsInstalled() : true
                     downloadError = nil
                 }

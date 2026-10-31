@@ -71,8 +71,13 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.toggleModifiers) }
     }
 
+    /// Код, который понимает текущая модель: у Whisper «auto», у облака
+    /// «multi». Сохранённый код другой модели (после её смены) читается как «ru».
     static var language: String {
-        get { d.string(forKey: Key.language) ?? "ru" }
+        get {
+            let code = d.string(forKey: Key.language) ?? "ru"
+            return dictationLanguages.contains { $0.code == code } ? code : "ru"
+        }
         set { d.set(newValue, forKey: Key.language) }
     }
 

@@ -35,7 +35,8 @@ final class RecordingIndicator {
     func show(_ mode: Mode) {
         model.mode = mode
         model.interimText = ""
-        model.lang = String(Prefs.language.prefix(2)).uppercased()
+        let language = Prefs.language
+        model.lang = ["auto", "multi"].contains(language) ? "AUTO" : language.uppercased()
         switch mode {
         case .recording:
             startTime = Date()

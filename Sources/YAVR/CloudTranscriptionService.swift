@@ -1,4 +1,3 @@
-import AVFoundation
 import Foundation
 import os.log
 
@@ -17,27 +16,21 @@ actor CloudTranscriptionService {
 
     private var webSocket: URLSessionWebSocketTask?
     private var urlSession: URLSession?
-    private var keepAliveTimer: Timer?
+    private var keepAliveTask: Task<Void, Never>?
+    private var senderTask: Task<Void, Never>?
     /// Завершённые фразы (TranscriptText) этой сессии, склеенные.
     private var committedText = ""
     /// Текущая незавершённая фраза (последний TranscriptInterim).
     private var currentPartial = ""
+    /// CloseStream отправлен: закрытие сокета дальше — штатное, не ошибка.
+    private var closing = false
+    /// Причина, по которой сессия оборвалась до финала.
+    private var failure: String?
+    private var onInterim: (@Sendable (String) -> Void)?
 
     /// Весь текст сессии: завершённые фразы + текущая незавершённая.
     private var combinedText: String {
-        var s = committedText
-        if !currentPartial.isEmpty {
-            if !s.isEmpty && !s.hasSuffix(" ") { s += " " }
-            s += currentPartial
-        }
-        return s
-    }
-
-    /// Обратный вызов при каждом interim-обновлении текста (main thread).
-    private var _onInterimUpdate: (@Sendable (String) -> Void)?
-
-    func setOnInterimUpdate(_ handler: (@Sendable (String) -> Void)?) {
-        _onInterimUpdate = handler
+        [committedText, currentPartial].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     // MARK: - Keychain
@@ -60,6 +53,150 @@ actor CloudTranscriptionService {
     }
 
     nonisolated static var isAvailable: Bool { readAccessToken() != nil }
+
+    // MARK: - Сессия
+
+    /// Подключается и отправляет звук из `audio` строго по порядку. Куски,
+    /// записанные до подключения, ждут в потоке и не теряются. Черновики
+    /// текста (вся сессия целиком) приходят в `onInterim`.
+    func startSession(
+        language: String, audio: AsyncStream<Data>,
+        onInterim: @escaping @Sendable (String) -> Void
+    ) throws {
+        cleanup()
+        guard let token = Self.readAccessToken() else { throw CloudSTTError.noToken }
+
+        var components = URLComponents(string: Self.wsBase)!
+        components.queryItems = [
+            "encoding": "linear16", "sample_rate": "16000", "channels": "1",
+            "endpointing_ms": "300", "utterance_end_ms": "1000", "language": language,
+            "use_conversation_engine": "true", "forward_interims": "typed",
+        ].map { URLQueryItem(name: $0.key, value: $0.value) }
+
+        var request = URLRequest(url: components.url!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("cli", forHTTPHeaderField: "x-app")
+        request.setValue(Self.origin, forHTTPHeaderField: "Origin")
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+
+        let session = URLSession(configuration: .default)
+        let task = session.webSocketTask(with: request)
+        urlSession = session
+        webSocket = task
+        self.onInterim = onInterim
+        task.resume()
+
+        sendText(#"{"type":"KeepAlive"}"#)
+        keepAliveTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(8))
+                sendText(#"{"type":"KeepAlive"}"#)
+            }
+        }
+        senderTask = Task {
+            for await chunk in audio {
+                webSocket?.send(.data(chunk)) { error in
+                    if let error { log.error("audio send: \(error.localizedDescription)") }
+                }
+            }
+        }
+        listen()
+    }
+
+    /// Ждёт, пока уйдёт весь звук (вызывающий уже закрыл поток), закрывает
+    /// стрим и возвращает финальный текст.
+    func finishSession() async throws -> String {
+        await senderTask?.value
+        closing = true
+        sendText(#"{"type":"CloseStream"}"#)
+
+        // Сервер присылает финал и сам закрывает сокет; ждём до 8 секунд.
+        let deadline = Date().addingTimeInterval(8)
+        while webSocket != nil, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+
+        let result = combinedText
+        let failure = failure
+        cleanup()
+        if result.isEmpty, let failure { throw CloudSTTError.connectionFailed(failure) }
+        return result
+    }
+
+    func cancel() {
+        cleanup()
+    }
+
+    private func sendText(_ text: String) {
+        webSocket?.send(.string(text)) { _ in }
+    }
+
+    private func cleanup() {
+        keepAliveTask?.cancel()
+        keepAliveTask = nil
+        senderTask?.cancel()
+        senderTask = nil
+        webSocket?.cancel(with: .goingAway, reason: nil)
+        webSocket = nil
+        urlSession?.invalidateAndCancel()
+        urlSession = nil
+        committedText = ""
+        currentPartial = ""
+        closing = false
+        failure = nil
+        onInterim = nil
+    }
+
+    // MARK: - Приём
+
+    private func listen() {
+        webSocket?.receive { [weak self] result in
+            guard let self else { return }
+            Task { await self.handle(result) }
+        }
+    }
+
+    private func handle(_ result: Result<URLSessionWebSocketTask.Message, Error>) {
+        switch result {
+        case .success(.string(let text)):
+            if let data = text.data(using: .utf8),
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            {
+                handle(json)
+            }
+            listen()
+        case .success:
+            listen()
+        case .failure(let error):
+            if !closing && failure == nil { failure = error.localizedDescription }
+            log.notice("WebSocket closed: \(error.localizedDescription)")
+            webSocket = nil
+        }
+    }
+
+    private func handle(_ json: [String: Any]) {
+        let transcript = (json["text"] ?? json["data"] ?? json["transcript"]) as? String
+        switch json["type"] as? String {
+        case "TranscriptInterim":
+            guard let transcript else { return }
+            currentPartial = transcript
+            onInterim?(combinedText)
+        case "TranscriptText":
+            // Фраза завершена сервером — переносим её в накопленный текст.
+            guard let transcript else { return }
+            committedText = [committedText, transcript].filter { !$0.isEmpty }.joined(separator: " ")
+            currentPartial = ""
+            onInterim?(combinedText)
+        case "error":
+            let message = (json["error"] as? [String: Any])?["message"] as? String
+            failure = message ?? "ошибка сервера"
+            log.error("Server error: \(self.failure ?? "")")
+            webSocket?.cancel(with: .goingAway, reason: nil)
+            webSocket = nil
+        default:
+            break  // TranscriptEndpoint и прочее: текст уже накоплен
+        }
+    }
 }
 
 enum CloudSTTError: LocalizedError {
@@ -70,186 +207,6 @@ enum CloudSTTError: LocalizedError {
         switch self {
         case .noToken: return "Нет токена Claude Code — запустите claude auth login"
         case .connectionFailed(let reason): return "Облачное распознавание: \(reason)"
-        }
-    }
-}
-
-extension CloudTranscriptionService {
-
-    // MARK: - Streaming session
-
-    /// Начинает стриминговую сессию: подключается к WebSocket.
-    func startSession(language: String) async throws {
-        guard let token = Self.readAccessToken() else {
-            throw CloudSTTError.noToken
-        }
-
-        committedText = ""
-        currentPartial = ""
-
-        var components = URLComponents(string: Self.wsBase)!
-        components.queryItems = [
-            URLQueryItem(name: "encoding", value: "linear16"),
-            URLQueryItem(name: "sample_rate", value: "16000"),
-            URLQueryItem(name: "channels", value: "1"),
-            URLQueryItem(name: "endpointing_ms", value: "300"),
-            URLQueryItem(name: "utterance_end_ms", value: "1000"),
-            URLQueryItem(name: "language", value: language),
-            URLQueryItem(name: "use_conversation_engine", value: "true"),
-            URLQueryItem(name: "forward_interims", value: "typed"),
-        ]
-
-        var request = URLRequest(url: components.url!)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("cli", forHTTPHeaderField: "x-app")
-        request.setValue(Self.origin, forHTTPHeaderField: "Origin")
-        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-
-        let session = URLSession(configuration: .default)
-        let task = session.webSocketTask(with: request)
-        self.urlSession = session
-        self.webSocket = task
-        task.resume()
-
-        sendKeepAlive()
-        startKeepAliveTimer()
-        listenForMessages()
-    }
-
-    /// Отправляет кусок PCM-аудио (Int16 LE, 16 kHz, mono).
-    func sendAudioChunk(_ chunk: Data) {
-        guard let ws = webSocket else { return }
-        ws.send(.data(chunk)) { error in
-            if let error {
-                log.error("sendAudioChunk: send error: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    /// Закрывает стрим и возвращает финальный текст.
-    func finishSession() async throws -> String {
-        let closeMessage = try JSONSerialization.data(
-            withJSONObject: ["type": "CloseStream"])
-        webSocket?.send(.string(String(data: closeMessage, encoding: .utf8)!)) { error in
-            if let error {
-                log.error("finishSession: CloseStream send error: \(error.localizedDescription)")
-            }
-        }
-
-        // Ждём финальный ответ (до 8 секунд)
-        let deadline = Date().addingTimeInterval(8)
-        while Date() < deadline {
-            try await Task.sleep(for: .milliseconds(100))
-            if webSocket == nil { break }
-        }
-
-        let result = combinedText
-        cleanup()
-        return result
-    }
-
-    func cancel() {
-        cleanup()
-    }
-
-    private func sendKeepAlive() {
-        webSocket?.send(.string("{\"type\":\"KeepAlive\"}")) { _ in }
-    }
-
-    private func startKeepAliveTimer() {
-        keepAliveTimer?.invalidate()
-        let timer = Timer(timeInterval: 8, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { await self.sendKeepAlive() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        keepAliveTimer = timer
-    }
-
-    private func cleanup() {
-        keepAliveTimer?.invalidate()
-        keepAliveTimer = nil
-        webSocket?.cancel(with: .goingAway, reason: nil)
-        webSocket = nil
-        urlSession?.invalidateAndCancel()
-        urlSession = nil
-        committedText = ""
-        currentPartial = ""
-        _onInterimUpdate = nil
-    }
-
-    /// Отдаёт весь накопленный текст сессии наблюдателю (main thread).
-    private func emitCombined() {
-        let captured = combinedText
-        let callback = _onInterimUpdate
-        Task { @MainActor in callback?(captured) }
-    }
-
-    // MARK: - Receiving
-
-    private func listenForMessages() {
-        guard let ws = webSocket else {
-            log.notice("listenForMessages: webSocket is nil")
-            return
-        }
-        ws.receive { [weak self] result in
-            guard let self else { return }
-            Task { await self.handleMessage(result) }
-        }
-    }
-
-    private func handleMessage(_ result: Result<URLSessionWebSocketTask.Message, Error>) {
-        switch result {
-        case .success(let message):
-            switch message {
-            case .string(let text):
-                if let data = text.data(using: .utf8),
-                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                {
-                    let type = json["type"] as? String ?? ""
-                    let transcript = (json["text"] as? String)
-                        ?? (json["data"] as? String)
-                        ?? (json["transcript"] as? String)
-                    if type == "TranscriptInterim" {
-                        if let transcript {
-                            currentPartial = transcript
-                            emitCombined()
-                        }
-                    } else if type == "TranscriptText" {
-                        // Фраза завершена сервером — переносим её в накопленный текст.
-                        if let transcript {
-                            if !committedText.isEmpty && !committedText.hasSuffix(" ") {
-                                committedText += " "
-                            }
-                            committedText += transcript
-                            currentPartial = ""
-                            emitCombined()
-                        }
-                    } else if type == "TranscriptEndpoint" {
-                        // Сервер закрыл фразу; текст уже накоплен в committedText.
-                    } else if type == "error" {
-                        if let error = json["error"] as? [String: Any],
-                            let msg = error["message"] as? String
-                        {
-                            log.error("Server error: \(msg)")
-                            committedText = ""
-                            currentPartial = ""
-                            let callback = _onInterimUpdate
-                            Task { @MainActor in callback?("[Ошибка: \(msg)]") }
-                        }
-                        cleanup()
-                        return
-                    }
-                }
-            case .data(let d):
-                log.notice("Binary message: \(d.count) bytes")
-            @unknown default:
-                break
-            }
-            listenForMessages()
-        case .failure(let error):
-            log.notice("WebSocket closed: \(error.localizedDescription)")
-            webSocket = nil
         }
     }
 }

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Поле записи шортката: клик -> «нажмите сочетание…» -> сохранение в Prefs.
-/// Esc отменяет запись. Требуется хотя бы один модификатор.
+/// Esc отменяет запись. Требуется ⌘, ⌥ или ⌃.
 struct ShortcutRecorderField: View {
     @State private var recording = false
     @State private var display = ShortcutRecorderField.currentDisplay()
@@ -33,7 +33,8 @@ struct ShortcutRecorderField: View {
                 return nil
             }
             let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
-            guard !flags.isEmpty else { return nil }  // без модификатора — игнор
+            // Нужен ⌘, ⌥ или ⌃: глобальный Shift+буква перехватил бы набор заглавных
+            guard !flags.isDisjoint(with: [.command, .option, .control]) else { return nil }
             Prefs.toggleKeyCode = Int(event.keyCode)
             Prefs.toggleModifiers = Int(flags.rawValue)
             display = KeyShortcut.displayString(keyCode: Int(event.keyCode), modifiers: flags)

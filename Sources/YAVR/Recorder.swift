@@ -18,7 +18,8 @@ final class Recorder {
     private var samples: [Float] = []
     private var limitTimer: Timer?
     private var recording = false
-    private var lastMicUID: String = ""
+    /// С каким входом создан engine: выбранный UID или системный по умолчанию.
+    private var engineInput = ""
 
     /// Вызывается на main при достижении лимита записи.
     var onLimitReached: (() -> Void)?
@@ -32,8 +33,11 @@ final class Recorder {
     func start(microphoneUID: String) throws {
         guard !recording else { return }
 
-        // Пересоздаём engine только если его нет или сменился микрофон
-        if engine == nil || microphoneUID != lastMicUID {
+        // Пересоздаём engine, если его нет или сменился вход — в том числе
+        // системный (подключили AirPods): старый engine держит прежний формат.
+        let wantedInput = microphoneUID.isEmpty
+            ? "default:\(AudioDevices.defaultInputDeviceID())" : microphoneUID
+        if engine == nil || wantedInput != engineInput {
             if let old = engine {
                 old.inputNode.removeTap(onBus: 0)
                 old.stop()
@@ -42,7 +46,7 @@ final class Recorder {
             AudioDevices.setInputDevice(uid: microphoneUID, for: newEngine)
             engine = newEngine
             converter = AudioConverter()
-            lastMicUID = microphoneUID
+            engineInput = wantedInput
             recLog.notice("start: created new engine")
         }
 

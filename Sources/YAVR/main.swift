@@ -29,14 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var terminationSignal: DispatchSourceSignal?
     private var accessibilityTimer: Timer?
     private var lastAccessibilityGranted = false
-    private var interimPasted = false
-    private var liveTyping = false
+    /// Облачная сессия: поток звука, её запуск (nil — ок, иначе текст ошибки)
+    /// и живой ввод в поле, если он включён.
+    private var cloudAudio: AsyncStream<Data>.Continuation?
+    private var cloudStart: Task<String?, Never>?
+    private var liveTyper: LiveTyper?
 
     func applicationWillTerminate(_ notification: Notification) {
         accessibilityTimer?.invalidate()
         transcriptionTask?.cancel()
         session.cancel()
         _ = stopRecordingResources()
+        abandonCloudSession()
         hotkeys.stop()
     }
 
@@ -125,41 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if Prefs.duckAudio { ducker.duck() }
 
             if model.isCloud {
-                recorder.onAudioChunk = { chunk in
-                    Task { await CloudTranscriptionService.shared.sendAudioChunk(chunk) }
-                }
-                interimPasted = false
-                // Живой ввод прямо в поле безопасен, только если во время речи
-                // клавиша не удержана: синтетические Cmd+V/Cmd+Z иначе считаются
-                // отпусканием модификатора и обрывают запись. В режиме удержания
-                // показываем текст в облачке и вставляем в конце.
-                let keyHeldWhileSpeaking =
-                    Prefs.triggerMode == "hold" || Prefs.shortcutBehavior == "hold"
-                liveTyping =
-                    Prefs.insertMode == "paste" && Paster.accessibilityGranted
-                    && !keyHeldWhileSpeaking
-                let language = Prefs.language
-                Task { [weak self] in
-                    do {
-                        await CloudTranscriptionService.shared.setOnInterimUpdate { [weak self] text in
-                            Task { @MainActor in
-                                guard let self else { return }
-                                if self.liveTyping {
-                                    if self.interimPasted { Paster.simulateCmdZ() }
-                                    Paster.pasteRaw(text)
-                                    self.interimPasted = true
-                                } else {
-                                    self.indicator.updateInterimText(text)
-                                }
-                            }
-                        }
-                        try await CloudTranscriptionService.shared.startSession(language: language)
-                    } catch {
-                        await MainActor.run { [weak self] in
-                            self?.statusController.state = .error(error.localizedDescription)
-                        }
-                    }
-                }
+                startCloudSession()
             } else {
                 recorder.onAudioChunk = nil
             }
@@ -171,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if Prefs.playSounds { NSSound(named: "Tink")?.play() }
         } catch {
             _ = stopRecordingResources()
+            abandonCloudSession()
             session.finish(sessionID)
             hotkeys.refreshConfiguration()
             statusController.state = .error(error.localizedDescription)
@@ -193,20 +164,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             GlossaryStore.shared.reload()
             let engine = GlossaryStore.shared.replacementEngine
             let useDictionary = Prefs.useDictionary
-            let hadInterimPaste = interimPasted
-            let wasLiveTyping = liveTyping
-            interimPasted = false
-            liveTyping = false
+            // Звука больше не будет: сервис дошлёт накопленное и закроет стрим.
+            cloudAudio?.finish()
+            cloudAudio = nil
+            let start = cloudStart
+            let typer = liveTyper
+            cloudStart = nil
+            liveTyper = nil
 
             transcriptionTask = Task {
                 do {
+                    if let startError = await start?.value {
+                        throw CloudSTTError.connectionFailed(startError)
+                    }
                     let raw = try await CloudTranscriptionService.shared.finishSession()
                     guard !Task.isCancelled, self.session.finish(sessionID) else { return }
                     self.transcriptionTask = nil
                     let text = useDictionary ? engine.apply(to: raw) : raw
-                    if wasLiveTyping {
-                        if hadInterimPaste { Paster.simulateCmdZ() }
-                        self.deliverCloud(text: text, duration: duration)
+                    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        _ = await typer?.finish(with: "")
+                        self.indicator.hide()
+                        self.refreshIdleState()
+                        return
+                    }
+                    if let typer, await typer.finish(with: Self.insertable(text)) {
+                        self.deliver(text: text, duration: duration, typedLive: true)
                     } else {
                         self.deliver(text: text, duration: duration)
                     }
@@ -214,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     await CloudTranscriptionService.shared.cancel()
                     guard self.session.finish(sessionID) else { return }
                     self.transcriptionTask = nil
+                    self.indicator.hide()
                     self.statusController.state = .error(error.localizedDescription)
                 }
             }
@@ -260,18 +243,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    private func deliver(text: String, duration: TimeInterval) {
+    /// Пробел в конце, чтобы последовательные диктовки не склеивались.
+    private static func insertable(_ text: String) -> String {
+        guard let last = text.last, !last.isWhitespace else { return text }
+        return text + " "
+    }
+
+    /// `typedLive` — текст уже напечатан в поле по ходу диктовки, остаётся
+    /// положить его в буфер.
+    private func deliver(text: String, duration: TimeInterval, typedLive: Bool = false) {
         indicator.hide()
         lastResult = text
         StatsStore.shared.record(text: text)
         NotificationCenter.default.post(name: .yavrDictation, object: text)
 
-        // Пробел в конце, чтобы последовательные диктовки не склеивались
-        var insertText = text
-        if let last = text.last, !last.isWhitespace {
-            insertText += " "
+        let insertText = Self.insertable(text)
+        let outcome: Paster.Outcome
+        if typedLive {
+            Paster.copy(insertText)
+            outcome = .pasted
+        } else {
+            outcome = Paster.insert(insertText, mode: Prefs.insertMode)
         }
-        let outcome = Paster.insert(insertText, mode: Prefs.insertMode)
         let statusText: String
         let ok: Bool
         switch outcome {
@@ -304,34 +297,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    /// Доставка для облачного живого ввода: текст уже печатался в поле по ходу
-    /// диктовки, последняя interim-вставка только что отменена Cmd+Z. Остаётся
-    /// вставить финальный (с учётом словаря) текст и оставить его в буфере.
-    private func deliverCloud(text: String, duration: TimeInterval) {
-        indicator.hide()
-        lastResult = text
-        StatsStore.shared.record(text: text)
-        NotificationCenter.default.post(name: .yavrDictation, object: text)
+    // MARK: - Облачная сессия
 
-        var insertText = text
-        if let last = text.last, !last.isWhitespace {
-            insertText += " "
+    /// Звук идёт в сервис одним потоком по порядку; подключение идёт
+    /// параллельно, и записанное до него ждёт в потоке.
+    private func startCloudSession() {
+        let (audio, continuation) = AsyncStream<Data>.makeStream()
+        cloudAudio = continuation
+        recorder.onAudioChunk = { continuation.yield($0) }
+
+        // Живой ввод прямо в поле безопасен, только если во время речи
+        // клавиша не удержана: синтетический Cmd+V иначе считается
+        // отпусканием модификатора и обрывает запись. В режиме удержания
+        // текст виден в облачке и вставляется в конце.
+        let keyHeldWhileSpeaking = Prefs.triggerMode == "hold" || Prefs.shortcutBehavior == "hold"
+        liveTyper = Prefs.insertMode == "paste" && Paster.canType && !keyHeldWhileSpeaking
+            ? LiveTyper() : nil
+
+        let language = Prefs.language
+        cloudStart = Task {
+            do {
+                try await CloudTranscriptionService.shared.startSession(
+                    language: language, audio: audio
+                ) { [weak self] text in
+                    // main-очередь сохраняет порядок черновиков, Task — нет.
+                    DispatchQueue.main.async { MainActor.assumeIsolated { self?.showDraft(text) } }
+                }
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
         }
-        Paster.pasteRaw(insertText)
+    }
 
-        refreshIdleState()
+    private func showDraft(_ text: String) {
+        guard session.phase == .recording else { return }
+        if let liveTyper { liveTyper.update(text) } else { indicator.updateInterimText(text) }
+    }
 
-        if Prefs.showPopup {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            popup.show(
-                ResultPopup.Content(
-                    text: text,
-                    time: formatter.string(from: Date()),
-                    duration: String(format: "%.1f c", duration),
-                    statusText: "Вставлено в активное окно",
-                    statusOK: true),
-                near: statusController.statusItem)
+    /// Запись сорвалась или приложение закрывается: дождаться запуска сессии
+    /// (иначе она откроется уже после отмены) и закрыть её.
+    private func abandonCloudSession() {
+        recorder.onAudioChunk = nil
+        cloudAudio?.finish()
+        cloudAudio = nil
+        liveTyper = nil
+        let start = cloudStart
+        cloudStart = nil
+        guard start != nil else { return }
+        Task {
+            _ = await start?.value
+            await CloudTranscriptionService.shared.cancel()
         }
     }
 
@@ -360,8 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc func copyLastResult() {
         guard !lastResult.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(lastResult, forType: .string)
+        Paster.copy(lastResult)
     }
 
     @objc func openSettings() {

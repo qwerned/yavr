@@ -2,7 +2,8 @@ import AppKit
 import Carbon.HIToolbox
 import Foundation
 
-/// Вставка результата: буфер обмена + симуляция Cmd+V с восстановлением буфера.
+/// Вставка результата: текст кладётся в буфер обмена и остаётся там,
+/// в активное окно он попадает симуляцией Cmd+V.
 enum Paster {
     enum Outcome {
         case pasted  // вставлено в активное окно (+ копия в буфере)
@@ -17,86 +18,46 @@ enum Paster {
         IsSecureEventInputEnabled()
     }
 
-    /// Кладёт текст в буфер и, если режим «вставлять» и это возможно,
-    /// симулирует Cmd+V, после чего восстанавливает прежний буфер.
+    /// Можно ли сейчас печатать в активное окно синтетическими нажатиями.
+    static var canType: Bool { accessibilityGranted && !secureInputActive }
+
+    /// Кладёт текст в буфер и, если режим «вставлять» и это возможно, жмёт Cmd+V.
     @MainActor
     static func insert(_ text: String, mode: String) -> Outcome {
-        let pasteboard = NSPasteboard.general
-
-        guard mode == "paste" else {
-            pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
-            return .copiedOnly(reason: nil)
-        }
+        copy(text)
+        guard mode == "paste" else { return .copiedOnly(reason: nil) }
         guard accessibilityGranted else {
-            pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
             return .copiedOnly(reason: "нет разрешения Универсального доступа")
         }
-        guard !secureInputActive else {
-            pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
-            return .copiedOnly(reason: "защищённый ввод (поле пароля)")
-        }
-
-        // Сохраняем прежнее содержимое буфера
-        let savedItems: [[NSPasteboard.PasteboardType: Data]] = (pasteboard.pasteboardItems ?? [])
-            .map { item in
-                var copy: [NSPasteboard.PasteboardType: Data] = [:]
-                for type in item.types {
-                    if let data = item.data(forType: type) { copy[type] = data }
-                }
-                return copy
-            }
-
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
-        simulateCmdV()
-
-        // Восстанавливаем буфер после того, как вставка успела произойти;
-        // свежая диктовка остаётся сверху: восстанавливаем только если
-        // пользователь выбрал режим «вставлять + копия в буфере» — по ТЗ
-        // копия остаётся, так что прежний буфер НЕ возвращаем, если он
-        // перетёр бы результат. Восстановление делаем только при вставке.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            // По ТЗ: «вставлять в активное окно + копия в буфер» — значит,
-            // после вставки в буфере должен остаться результат диктовки.
-            // Прежний буфер восстанавливаем только если он был непустой
-            // и режим этого требует. Здесь: оставляем результат в буфере.
-            _ = savedItems  // сохранено на случай смены политики
-        }
+        guard !secureInputActive else { return .copiedOnly(reason: "защищённый ввод (поле пароля)") }
+        press(kVK_ANSI_V, flags: .maskCommand)
         return .pasted
     }
 
-    /// Симуляция нажатия Cmd+V.
-    private static func simulateCmdV() {
-        let source = CGEventSource(stateID: .combinedSessionState)
-        let vDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true)
-        let vUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false)
-        vDown?.flags = .maskCommand
-        vUp?.flags = .maskCommand
-        vDown?.post(tap: .cghidEventTap)
-        vUp?.post(tap: .cghidEventTap)
-    }
-
-    /// Симуляция Cmd+Z (Undo).
-    static func simulateCmdZ() {
-        let source = CGEventSource(stateID: .combinedSessionState)
-        let down = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: false)
-        down?.flags = .maskCommand
-        up?.flags = .maskCommand
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
-    }
-
-    /// Вставляет текст через буфер обмена без сохранения/восстановления прежнего буфера.
     @MainActor
-    static func pasteRaw(_ text: String) {
-        guard accessibilityGranted, !secureInputActive else { return }
+    static func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        simulateCmdV()
+    }
+
+    /// Вставка без проверок — вызывающий уже убедился в `canType`.
+    @MainActor
+    static func paste(_ text: String) {
+        copy(text)
+        press(kVK_ANSI_V, flags: .maskCommand)
+    }
+
+    /// Стирает `count` символов перед курсором.
+    static func deleteBackward(_ count: Int) {
+        for _ in 0..<count { press(kVK_Delete) }
+    }
+
+    private static func press(_ key: Int, flags: CGEventFlags = []) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        for keyDown in [true, false] {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(key), keyDown: keyDown)
+            event?.flags = flags
+            event?.post(tap: .cghidEventTap)
+        }
     }
 }

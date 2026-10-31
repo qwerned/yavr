@@ -37,6 +37,19 @@ enum AudioDevices {
         }
     }
 
+    /// Системное устройство ввода по умолчанию (0, если его нет).
+    static func defaultInputDeviceID() -> AudioDeviceID {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID)
+        return deviceID
+    }
+
     static func device(withUID uid: String) -> Device? {
         inputDevices().first { $0.uid == uid }
     }

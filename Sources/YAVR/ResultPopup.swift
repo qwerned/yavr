@@ -19,8 +19,7 @@ final class ResultPopup {
         hide()
 
         let view = ResultPopupView(content: content) { [weak self] in
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(content.text, forType: .string)
+            Paster.copy(content.text)
             self?.hide()
         }
         let hosting = NSHostingController(rootView: view)
