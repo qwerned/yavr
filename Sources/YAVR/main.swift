@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var terminationSignal: DispatchSourceSignal?
     private var accessibilityTimer: Timer?
     private var lastAccessibilityGranted = false
+    private var interimPasted = false
+    private var liveTyping = false
 
     func applicationWillTerminate(_ notification: Notification) {
         accessibilityTimer?.invalidate()
@@ -96,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         refreshIdleState()
         if Prefs.onboardingDone { LoginItemController.shared.configureAfterOnboarding() }
 
-        if !Prefs.onboardingDone || !TranscriptionService.modelsInstalled() {
+        if !Prefs.onboardingDone || (Prefs.recognitionModel.needsLocalModel && !TranscriptionService.modelsInstalled()) {
             openOnboarding()
         }
     }
@@ -105,13 +107,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func beginRecording() {
         guard session.phase == .idle else { return }
-        guard TranscriptionService.modelsInstalled() else {
-            statusController.state = .error("Модель не установлена — откройте настройки")
-            return
+        let model = Prefs.recognitionModel
+        if model.needsLocalModel {
+            guard TranscriptionService.modelsInstalled(model: model) else {
+                statusController.state = .error("Модель не установлена — откройте настройки")
+                return
+            }
+        }
+        if model.isCloud {
+            guard CloudTranscriptionService.isAvailable else {
+                statusController.state = .error("Нет токена Claude Code — запустите claude auth login")
+                return
+            }
         }
         guard let sessionID = session.begin() else { return }
         do {
             if Prefs.duckAudio { ducker.duck() }
+
+            if model.isCloud {
+                recorder.onAudioChunk = { chunk in
+                    Task { await CloudTranscriptionService.shared.sendAudioChunk(chunk) }
+                }
+                interimPasted = false
+                // Живой ввод прямо в поле безопасен, только если во время речи
+                // клавиша не удержана: синтетические Cmd+V/Cmd+Z иначе считаются
+                // отпусканием модификатора и обрывают запись. В режиме удержания
+                // показываем текст в облачке и вставляем в конце.
+                let keyHeldWhileSpeaking =
+                    Prefs.triggerMode == "hold" || Prefs.shortcutBehavior == "hold"
+                liveTyping =
+                    Prefs.insertMode == "paste" && Paster.accessibilityGranted
+                    && !keyHeldWhileSpeaking
+                let language = Prefs.language
+                Task { [weak self] in
+                    do {
+                        await CloudTranscriptionService.shared.setOnInterimUpdate { [weak self] text in
+                            Task { @MainActor in
+                                guard let self else { return }
+                                if self.liveTyping {
+                                    if self.interimPasted { Paster.simulateCmdZ() }
+                                    Paster.pasteRaw(text)
+                                    self.interimPasted = true
+                                } else {
+                                    self.indicator.updateInterimText(text)
+                                }
+                            }
+                        }
+                        try await CloudTranscriptionService.shared.startSession(language: language)
+                    } catch {
+                        await MainActor.run { [weak self] in
+                            self?.statusController.state = .error(error.localizedDescription)
+                        }
+                    }
+                }
+            } else {
+                recorder.onAudioChunk = nil
+            }
+
             try recorder.start(microphoneUID: Prefs.microphoneUID)
             recordingStart = Date()
             statusController.state = .recording
@@ -129,8 +181,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard session.phase == .recording, let sessionID = session.transcribe() else { return }
         let duration = recordingStart.map { Date().timeIntervalSince($0) } ?? 0
         let samples = stopRecordingResources()
+        recorder.onAudioChunk = nil
         hotkeys.refreshConfiguration()
         if Prefs.playSounds { NSSound(named: "Pop")?.play() }
+
+        let model = Prefs.recognitionModel
+
+        if model.isCloud {
+            statusController.state = .transcribing
+            indicator.show(.transcribing)
+            GlossaryStore.shared.reload()
+            let engine = GlossaryStore.shared.replacementEngine
+            let useDictionary = Prefs.useDictionary
+            let hadInterimPaste = interimPasted
+            let wasLiveTyping = liveTyping
+            interimPasted = false
+            liveTyping = false
+
+            transcriptionTask = Task {
+                do {
+                    let raw = try await CloudTranscriptionService.shared.finishSession()
+                    guard !Task.isCancelled, self.session.finish(sessionID) else { return }
+                    self.transcriptionTask = nil
+                    let text = useDictionary ? engine.apply(to: raw) : raw
+                    if wasLiveTyping {
+                        if hadInterimPaste { Paster.simulateCmdZ() }
+                        self.deliverCloud(text: text, duration: duration)
+                    } else {
+                        self.deliver(text: text, duration: duration)
+                    }
+                } catch {
+                    await CloudTranscriptionService.shared.cancel()
+                    guard self.session.finish(sessionID) else { return }
+                    self.transcriptionTask = nil
+                    self.statusController.state = .error(error.localizedDescription)
+                }
+            }
+            return
+        }
 
         guard samples.count > 8000 else {
             session.finish(sessionID)
@@ -141,12 +229,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         statusController.state = .transcribing
         indicator.show(.transcribing)
-        // Перечитываем глоссарий: ручные правки файла работают без перезапуска
         GlossaryStore.shared.reload()
         let glossaryURL = GlossaryStore.shared.fileURL
         let engine = GlossaryStore.shared.replacementEngine
         let language = Prefs.language
-        let model = Prefs.recognitionModel
         let useDictionary = Prefs.useDictionary
 
         transcriptionTask = Task {
@@ -214,6 +300,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     duration: String(format: "%.1f c", duration),
                     statusText: statusText,
                     statusOK: ok),
+                near: statusController.statusItem)
+        }
+    }
+
+    /// Доставка для облачного живого ввода: текст уже печатался в поле по ходу
+    /// диктовки, последняя interim-вставка только что отменена Cmd+Z. Остаётся
+    /// вставить финальный (с учётом словаря) текст и оставить его в буфере.
+    private func deliverCloud(text: String, duration: TimeInterval) {
+        indicator.hide()
+        lastResult = text
+        StatsStore.shared.record(text: text)
+        NotificationCenter.default.post(name: .yavrDictation, object: text)
+
+        var insertText = text
+        if let last = text.last, !last.isWhitespace {
+            insertText += " "
+        }
+        Paster.pasteRaw(insertText)
+
+        refreshIdleState()
+
+        if Prefs.showPopup {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            popup.show(
+                ResultPopup.Content(
+                    text: text,
+                    time: formatter.string(from: Date()),
+                    duration: String(format: "%.1f c", duration),
+                    statusText: "Вставлено в активное окно",
+                    statusOK: true),
                 near: statusController.statusItem)
         }
     }

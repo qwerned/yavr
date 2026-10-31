@@ -79,4 +79,24 @@ enum Paster {
         vDown?.post(tap: .cghidEventTap)
         vUp?.post(tap: .cghidEventTap)
     }
+
+    /// Симуляция Cmd+Z (Undo).
+    static func simulateCmdZ() {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: false)
+        down?.flags = .maskCommand
+        up?.flags = .maskCommand
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
+
+    /// Вставляет текст через буфер обмена без сохранения/восстановления прежнего буфера.
+    @MainActor
+    static func pasteRaw(_ text: String) {
+        guard accessibilityGranted, !secureInputActive else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        simulateCmdV()
+    }
 }

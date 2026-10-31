@@ -81,8 +81,14 @@ enum Prefs {
     /// дописать пару (код ISO, название) в этот список.
     static var dictationLanguages: [(code: String, name: String)] {
         let languages = [(code: "ru", name: "Русский"), (code: "en", name: "English")]
-        return recognitionModel == .whisperTurbo
-            ? [(code: "auto", name: "Автоопределение")] + languages : languages
+        switch recognitionModel {
+        case .whisperTurbo:
+            return [(code: "auto", name: "Автоопределение")] + languages
+        case .anthropicCloud:
+            return [(code: "multi", name: "Авто")] + languages
+        default:
+            return languages
+        }
     }
 
     static func languageName(_ code: String) -> String {

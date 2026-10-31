@@ -202,29 +202,43 @@ struct GeneralTab: View {
                 }
                 .disabled(downloading)
                 .onChange(of: recognitionModel) { _, _ in
-                    if Prefs.recognitionModel == .parakeet && Prefs.language == "auto" {
+                    let current = Prefs.recognitionModel
+                    if current == .parakeet && Prefs.language == "auto" {
                         Prefs.language = "ru"
                     }
-                    modelInstalled = TranscriptionService.modelsInstalled()
+                    modelInstalled = current.needsLocalModel ? TranscriptionService.modelsInstalled() : true
                     downloadError = nil
                 }
-                HStack {
-                    RowLabel(
-                        icon: "waveform", color: .indigo, text: "Модель распознавания",
-                        sub: modelInstalled
-                            ? "Установлена" : Prefs.recognitionModel.downloadDescription)
-                    Spacer()
-                    if downloading {
-                        ProgressView(value: downloadProgress)
-                            .frame(width: 120)
-                    } else {
-                        Button(modelInstalled ? "Скачать заново" : "Скачать") {
-                            downloadModels()
+                if Prefs.recognitionModel.isCloud {
+                    HStack {
+                        RowLabel(
+                            icon: "cloud", color: .blue, text: "Anthropic Cloud STT",
+                            sub: CloudTranscriptionService.isAvailable
+                                ? "Токен найден" : "Нужен claude auth login")
+                        Spacer()
+                        Circle()
+                            .fill(CloudTranscriptionService.isAvailable ? .green : .red)
+                            .frame(width: 8, height: 8)
+                    }
+                } else {
+                    HStack {
+                        RowLabel(
+                            icon: "waveform", color: .indigo, text: "Модель распознавания",
+                            sub: modelInstalled
+                                ? "Установлена" : Prefs.recognitionModel.downloadDescription)
+                        Spacer()
+                        if downloading {
+                            ProgressView(value: downloadProgress)
+                                .frame(width: 120)
+                        } else {
+                            Button(modelInstalled ? "Скачать заново" : "Скачать") {
+                                downloadModels()
+                            }
                         }
                     }
-                }
-                if let downloadError {
-                    Text(downloadError).font(.caption).foregroundStyle(.red)
+                    if let downloadError {
+                        Text(downloadError).font(.caption).foregroundStyle(.red)
+                    }
                 }
                 Toggle(isOn: Binding(get: { loginItem.enabled }, set: { loginItem.setEnabled($0) })) {
                     RowLabel(
