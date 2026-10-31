@@ -27,44 +27,98 @@ actor CloudTranscriptionService {
     /// Причина, по которой сессия оборвалась до финала.
     private var failure: String?
     private var onInterim: (@Sendable (String) -> Void)?
+    private var refreshTask: Task<Void, Never>?
 
     /// Весь текст сессии: завершённые фразы + текущая незавершённая.
     private var combinedText: String {
         [committedText, currentPartial].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
-    // MARK: - Keychain
+    // MARK: - Токен
 
-    nonisolated static func readAccessToken() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data,
+    private struct Credentials {
+        let token: String
+        let expiresAt: Date?
+    }
+
+    /// Через /usr/bin/security, а не SecItemCopyMatching: claude перезаписывает
+    /// запись этой утилитой (`add-generic-password -U`), и macOS сбрасывает
+    /// доступ всем, кроме неё, — YAVR спрашивал бы пароль связки после каждого
+    /// обновления токена.
+    nonisolated private static func readCredentials() -> Credentials? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", keychainService, "-w"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let oauth = json["claudeAiOauth"] as? [String: Any],
             let token = oauth["accessToken"] as? String, !token.isEmpty
         else { return nil }
-        return token
+        let expiresAt = (oauth["expiresAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) }
+        return Credentials(token: token, expiresAt: expiresAt)
     }
 
-    nonisolated static var isAvailable: Bool { readAccessToken() != nil }
+    nonisolated static var isAvailable: Bool { readCredentials() != nil }
+
+    /// Токен живёт около 8 часов, а обновляет его только сама утилита claude
+    /// при запросе. Короткий запрос к Haiku незадолго до истечения держит
+    /// токен свежим; ключ обновления остаётся у claude, и они не расходятся.
+    /// Запас меньше 5 минут: раньше этого claude токен не обновляет
+    /// (порог в его коде — `now + 300000 >= expiresAt`).
+    func refreshTokenIfNeeded(margin: TimeInterval = 4 * 60) async {
+        if let refreshTask { return await refreshTask.value }
+        guard let expiresAt = Self.readCredentials()?.expiresAt,
+            expiresAt.timeIntervalSinceNow < margin
+        else { return }
+        let task = Task.detached { Self.pingClaude() }
+        refreshTask = task
+        await task.value
+        refreshTask = nil
+    }
+
+    nonisolated private static func pingClaude() {
+        let candidates = ["~/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
+            .map { NSString(string: $0).expandingTildeInPath }
+        guard let path = candidates.first(where: FileManager.default.isExecutableFile) else {
+            log.error("token refresh: claude not found")
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = [
+            "-p", "--no-session-persistence", "--model", "haiku", "Ответь одним словом: ок",
+        ]
+        process.currentDirectoryURL = FileManager.default.temporaryDirectory
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
+            if process.isRunning { process.terminate() }
+        }
+        process.waitUntilExit()
+        log.notice("token refresh: claude exited \(process.terminationStatus)")
+    }
 
     // MARK: - Сессия
 
     /// Подключается и отправляет звук из `audio` строго по порядку. Куски,
     /// записанные до подключения, ждут в потоке и не теряются. Черновики
-    /// текста (вся сессия целиком) приходят в `onInterim`.
+    /// текста (вся сессия целиком) приходят в `onInterim`. Истёкший токен
+    /// (Mac спал) сначала обновляется — звук тем временем копится в потоке.
     func startSession(
         language: String, audio: AsyncStream<Data>,
         onInterim: @escaping @Sendable (String) -> Void
-    ) throws {
+    ) async throws {
         cleanup()
-        guard let token = Self.readAccessToken() else { throw CloudSTTError.noToken }
+        await refreshTokenIfNeeded(margin: 60)
+        guard let token = Self.readCredentials()?.token else { throw CloudSTTError.noToken }
 
         var components = URLComponents(string: Self.wsBase)!
         components.queryItems = [

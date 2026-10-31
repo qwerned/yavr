@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var transcriptionTask: Task<Void, Never>?
     private var terminationSignal: DispatchSourceSignal?
     private var accessibilityTimer: Timer?
+    private var tokenTimer: Timer?
     private var lastAccessibilityGranted = false
     /// Облачная сессия: поток звука, её запуск (nil — ок, иначе текст ошибки)
     /// и живой ввод в поле, если он включён.
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         accessibilityTimer?.invalidate()
+        tokenTimer?.invalidate()
         transcriptionTask?.cancel()
         session.cancel()
         _ = stopRecordingResources()
@@ -88,6 +90,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         RunLoop.main.add(accessibilityTimer, forMode: .common)
         self.accessibilityTimer = accessibilityTimer
+
+        // Токен облака обновляется заранее, чтобы диктовка не ждала обновления;
+        // проверка чаще, чем окно, в котором claude соглашается обновлять.
+        let tokenTimer = Timer(timeInterval: 2 * 60, repeats: true) { _ in
+            Task { @MainActor in
+                guard Prefs.recognitionModel.isCloud else { return }
+                await CloudTranscriptionService.shared.refreshTokenIfNeeded()
+            }
+        }
+        RunLoop.main.add(tokenTimer, forMode: .common)
+        self.tokenTimer = tokenTimer
 
         // Перезапуск монитора при смене настроек триггера
         NotificationCenter.default.addObserver(
