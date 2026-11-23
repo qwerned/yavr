@@ -12,6 +12,8 @@ final class RecordingIndicator {
         case recording
         case transcribing
         case error(String)
+        /// Короткое сообщение без ошибки («Скопировано в буфер…»).
+        case notice(String)
     }
 
     /// Кнопка ×: те же действия, что у отмены диктовки.
@@ -23,7 +25,7 @@ final class RecordingIndicator {
     private let model = IndicatorModel()
     private var startTime: Date?
     private var timer: Timer?
-    private var errorHideTask: Task<Void, Never>?
+    private var autoHideTask: Task<Void, Never>?
     private var colorObserver: NSObjectProtocol?
 
     private static let height: CGFloat = 40
@@ -34,12 +36,13 @@ final class RecordingIndicator {
     private static let appearOffset: CGFloat = 6
     /// Ошибка висит столько, если её не закрыли кнопкой ×.
     private static let errorDuration: Duration = .seconds(5)
+    private static let noticeDuration: Duration = .seconds(3)
 
     /// `streamsText` — движок присылает текст по ходу речи (облако без живого
     /// ввода в поле): пока текста нет, а речь идёт, вместо статуса пульсируют точки.
     func show(_ mode: Mode, streamsText: Bool = false) {
-        errorHideTask?.cancel()
-        errorHideTask = nil
+        autoHideTask?.cancel()
+        autoHideTask = nil
         switch mode {
         case .recording:
             model.interimText = ""
@@ -55,10 +58,12 @@ final class RecordingIndicator {
             stopTimer()
             model.level = 0
             model.clipping = false
-        case .error:
+        case .error, .notice:
             stopTimer()
-            errorHideTask = Task { [weak self] in
-                try? await Task.sleep(for: Self.errorDuration)
+            let duration: Duration
+            if case .error = mode { duration = Self.errorDuration } else { duration = Self.noticeDuration }
+            autoHideTask = Task { [weak self] in
+                try? await Task.sleep(for: duration)
                 guard !Task.isCancelled else { return }
                 self?.hide()
             }
@@ -69,11 +74,12 @@ final class RecordingIndicator {
     }
 
     func showError(_ message: String) { show(.error(message)) }
+    func showNotice(_ message: String) { show(.notice(message)) }
 
     func hide() {
         stopTimer()
-        errorHideTask?.cancel()
-        errorHideTask = nil
+        autoHideTask?.cancel()
+        autoHideTask = nil
         startTime = nil
         model.interimText = ""
         model.level = 0
@@ -261,6 +267,17 @@ private struct IndicatorView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 13))
                     .foregroundStyle(Color.systemRed)
+                Text(message)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.label)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(message)
+            case .notice(let message):
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.secondaryLabel)
                 Text(message)
                     .font(.system(size: 13))
                     .foregroundStyle(Color.label)

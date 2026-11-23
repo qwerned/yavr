@@ -371,6 +371,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         refreshIdleState()
 
+        // Вставка не удалась — сказать прямо в капсуле, что текст в буфере.
+        if case .copiedOnly(let reason?) = outcome {
+            indicator.showNotice("Скопировано в буфер — \(reason)")
+        }
+
         if Prefs.showPopup {
             let formatter = DateFormatter()
             formatter.dateFormat = "HH:mm"
@@ -400,6 +405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // текст виден в облачке и вставляется в конце.
         let keyHeldWhileSpeaking = Prefs.triggerMode == "hold" || Prefs.shortcutBehavior == "hold"
         liveTyper = Prefs.insertMode == "paste" && Paster.canType && !keyHeldWhileSpeaking
+            && Paster.focusTarget() != .none
             ? LiveTyper() : nil
 
         let language = Prefs.language

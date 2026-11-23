@@ -21,6 +21,53 @@ enum Paster {
     /// Можно ли сейчас печатать в активное окно синтетическими нажатиями.
     static var canType: Bool { accessibilityGranted && !secureInputActive }
 
+    /// Куда попадёт Cmd+V. `.none` — точно некуда: у активного приложения нет
+    /// окна в фокусе (рабочий стол) или в фокусе явно не текст (список файлов,
+    /// таблица, кнопка). `.unknown` — приложение не отвечает через
+    /// Accessibility (бывает у Electron и браузеров): вставляем как раньше.
+    enum FocusTarget { case text, none, unknown }
+
+    /// Роли, в которые текст точно не вставить.
+    private static let nonTextRoles: Set<String> = [
+        "AXList", "AXOutline", "AXTable", "AXBrowser", "AXImage", "AXButton",
+        "AXCheckBox", "AXRadioButton", "AXMenu", "AXMenuBar", "AXMenuItem",
+    ]
+    private static let textRoles: Set<String> = [
+        "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField",
+    ]
+
+    @MainActor
+    static func focusTarget() -> FocusTarget {
+        guard accessibilityGranted else { return .unknown }
+        guard let app = NSWorkspace.shared.frontmostApplication else { return .none }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(axApp, 0.25)
+
+        var window: CFTypeRef?
+        switch AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &window) {
+        case .success where window != nil: break
+        case .success, .noValue: return .none
+        default: return .unknown
+        }
+
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID()
+        else { return .unknown }
+        let element = focused as! AXUIElement
+
+        var roleValue: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue)
+        let role = roleValue as? String ?? ""
+        if textRoles.contains(role) { return .text }
+        var settable: DarwinBoolean = false
+        if AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success,
+           settable.boolValue {
+            return .text
+        }
+        return nonTextRoles.contains(role) ? .none : .unknown
+    }
+
     /// Кладёт текст в буфер и, если режим «вставлять» и это возможно, жмёт Cmd+V.
     @MainActor
     static func insert(_ text: String, mode: String) -> Outcome {
@@ -30,6 +77,7 @@ enum Paster {
             return .copiedOnly(reason: "нет разрешения Универсального доступа")
         }
         guard !secureInputActive else { return .copiedOnly(reason: "защищённый ввод (поле пароля)") }
+        guard focusTarget() != .none else { return .copiedOnly(reason: "нет поля для вставки") }
         press(kVK_ANSI_V, flags: .maskCommand)
         return .pasted
     }
