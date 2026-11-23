@@ -322,6 +322,19 @@ do {  // FillerWords
     expect(f("  Привет  "), "  Привет  ", "unchanged input returned as is")
 }
 
+do {  // WhisperHallucinations
+    func h(_ t: String) -> String { WhisperHallucinations.strip(t) }
+    expect(h("Сделаем так. Продолжение следует..."), "Сделаем так.")
+    expect(h("Сделаем так, продолжение следует"), "Сделаем так")
+    expect(h("Продолжение следует..."), "")
+    expect(h("Привет. Субтитры сделал DimaTorzok"), "Привет.")
+    expect(h("Ок. Редактор субтитров А.Синецкая Корректор А.Егорова"), "Ок.")
+    expect(h("Done. Thanks for watching!"), "Done.")
+    expect(h("Продолжение следует в следующем релизе."), "Продолжение следует в следующем релизе.", "not at the end")
+    expect(h("Сериал. Непродолжение следует"), "Сериал. Непродолжение следует", "word boundary")
+    expect(h("Привет"), "Привет")
+}
+
 if failures == 0 {
     print("OK: \(checks) checks passed")
 } else {

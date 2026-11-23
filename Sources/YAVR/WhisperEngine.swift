@@ -1,5 +1,6 @@
 import Foundation
 import TranscribeCpp
+import YAVRCore
 
 /// Whisper large-v3-turbo Q8_0 (GGUF) на transcribe.cpp с Metal и Silero VAD —
 /// та же сборка модели и тот же движок, что у Орки.
@@ -82,8 +83,8 @@ final class WhisperEngine: @unchecked Sendable {
             timestamps: .none, language: language,
             vocabulary: supportsVocabulary ? vocabulary : [])
         do {
-            return try await session.run(speech, options: options).text
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // «Продолжение следует...» и прочие титры из субтитров в хвосте.
+            return WhisperHallucinations.strip(try await session.run(speech, options: options).text)
         } catch TranscribeError.outputTruncated(_, let partial?),
                 TranscribeError.outputRepetition(_, let partial?) {
             // Обрезанный или зациклившийся вывод: целая часть лучше ошибки.
