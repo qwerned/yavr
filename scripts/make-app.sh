@@ -6,18 +6,19 @@ cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
 swift package resolve
-python3 scripts/prepare-resource-bundles.py
 swift build --build-system native -c "$CONFIG"
 
 APP="dist/YAVR.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 
 cp ".build/$CONFIG/YAVR" "$APP/Contents/MacOS/YAVR"
-# Include resource bundles from WhisperKit's tokenizer dependencies as well.
-for bundle in YAVR_YAVR.bundle swift-transformers_Hub.bundle swift-crypto_Crypto.bundle; do
-    cp -R ".build/$CONFIG/$bundle" "$APP/Contents/Resources/"
-done
+cp -R ".build/$CONFIG/YAVR_YAVR.bundle" "$APP/Contents/Resources/"
+# transcribe.cpp (Whisper) — динамический фреймворк, ищется через
+# rpath @executable_path/../Frameworks.
+FRAMEWORK=$(find .build/artifacts -path "*macos-arm64_x86_64/CTranscribe.framework" -maxdepth 6 | head -1)
+[[ -n "$FRAMEWORK" ]] || { echo "Нет CTranscribe.framework в .build/artifacts"; exit 1; }
+cp -R "$FRAMEWORK" "$APP/Contents/Frameworks/"
 cp "design/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" << 'PLIST'
@@ -48,7 +49,7 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
     <key>NSMicrophoneUsageDescription</key>
     <string>YAVR записывает голос только во время диктовки, распознавание идёт целиком на этом Mac.</string>
     <key>NSHumanReadableCopyright</key>
-    <string>Использует FluidAudio (Apache 2.0), NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0), WhisperKit и OpenAI Whisper (MIT).</string>
+    <string>Использует FluidAudio (Apache 2.0), NVIDIA Parakeet TDT 0.6b v3 (CC-BY-4.0), transcribe.cpp (MIT), OpenAI Whisper (MIT) и Silero VAD (MIT).</string>
 </dict>
 </plist>
 PLIST
@@ -64,6 +65,8 @@ if ! security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$SIGN_ID\
     exit 1
 fi
 echo "Подпись: $SIGN_ID"
+# Вложенный фреймворк подписывается раньше бандла той же identity.
+codesign --force --options runtime --sign "$SIGN_ID" "$APP/Contents/Frameworks/CTranscribe.framework"
 codesign --force --options runtime \
     --entitlements "scripts/yavr.entitlements" \
     --sign "$SIGN_ID" "$APP"

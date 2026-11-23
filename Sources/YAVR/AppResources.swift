@@ -1,4 +1,5 @@
 import Foundation
+import TranscribeCpp
 import YAVRCore
 
 enum AppResources {
@@ -22,13 +23,12 @@ enum AppResources {
     /// Runs before AppDelegate: no settings, model downloads, or microphone access.
     static func checkInstallation() throws {
         _ = try Glossary.load(from: glossaryURL())
-        // Both app and Hub look only inside the installed bundle when packaged.
-        guard try glossaryURL().path.hasPrefix(Bundle.main.bundleURL.path + "/"),
-              let resources = Bundle.main.resourceURL,
-              let hub = Bundle(url: resources.appendingPathComponent("swift-transformers_Hub.bundle")),
-              !(hub.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? []).isEmpty else {
+        // The packaged app looks only inside its own bundle.
+        guard try glossaryURL().path.hasPrefix(Bundle.main.bundleURL.path + "/") else {
             throw CocoaError(.fileNoSuchFile)
         }
-        print("OK: bundled glossary and tokenizer resources; no build-directory fallback")
+        // transcribe.cpp is loaded from Contents/Frameworks and matches the wrapper ABI.
+        try Transcribe.ensureCompatible()
+        print("OK: bundled glossary and transcribe.cpp \(Transcribe.version()); no build-directory fallback")
     }
 }

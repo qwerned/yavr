@@ -36,6 +36,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var cloudStart: Task<String?, Never>?
     private var liveTyper: LiveTyper?
 
+    /// Выход ждёт выгрузки Whisper (см. TranscriptionService.unloadWhisper).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        transcriptionTask?.cancel()
+        // Пока AppKit ждёт ответа, главный цикл крутится в модальном режиме:
+        // задачи MainActor там не выполняются, поэтому выгрузка — в отдельной
+        // задаче, а ответ — блоком цикла событий в этих режимах.
+        Task.detached {
+            await TranscriptionService.shared.unloadWhisper()
+            RunLoop.main.perform(inModes: [.common, .modalPanel]) {
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         accessibilityTimer?.invalidate()
         tokenTimer?.invalidate()
@@ -119,6 +134,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         refreshIdleState()
         if Prefs.onboardingDone { LoginItemController.shared.configureAfterOnboarding() }
+        // Whisper грузится заранее: модель ~0,9 ГБ и прогрев Metal.
+        Task { await TranscriptionService.shared.prewarm() }
 
         if !Prefs.onboardingDone || (Prefs.recognitionModel.needsLocalModel && !TranscriptionService.modelsInstalled()) {
             openOnboarding()
@@ -546,6 +563,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 if CommandLine.arguments.contains("--check-installation") {
     do { try AppResources.checkInstallation(); exit(0) }
     catch { fputs("Installation check failed: \(error)\n", stderr); exit(1) }
+}
+
+if CommandLine.arguments.contains("--transcribe") {
+    Task {
+        do { try await DebugTranscribe.run(arguments: CommandLine.arguments); exit(0) }
+        catch { fputs("Transcription failed: \(error)\n", stderr); exit(1) }
+    }
+    dispatchMain()
 }
 
 MainActor.assumeIsolated {

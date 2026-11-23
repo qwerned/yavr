@@ -1,7 +1,6 @@
 import FluidAudio
 import Foundation
 import YAVRCore
-import WhisperKit
 
 /// Загрузка моделей и пайплайн распознавания: ASR -> boosting -> замены.
 actor TranscriptionService {
@@ -10,26 +9,11 @@ actor TranscriptionService {
     private var asrManager: AsrManager?
     private var ctcModels: CtcModels?
 
-    private var whisper: WhisperKit?
-    private static let whisperVariant = "openai_whisper-large-v3-v20240930_626MB"
-    private static var whisperCache: URL {
-        AppPaths.supportDirectory.appendingPathComponent("WhisperKit", isDirectory: true)
-    }
-    private static var whisperFolder: URL {
-        whisperCache.appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(whisperVariant)")
-    }
-    private static var whisperReadyMarker: URL {
-        whisperFolder.appendingPathComponent(".yavr-ready")
-    }
+    private var whisper: WhisperEngine?
 
-    /// Готовность выбранного движка (включая токенизатор для Whisper).
+    /// Готовность выбранного движка (для Whisper — модель и Silero VAD).
     nonisolated static func modelsInstalled(model: RecognitionModel = Prefs.recognitionModel) -> Bool {
-        if model == .whisperTurbo {
-            return FileManager.default.fileExists(atPath: whisperReadyMarker.path)
-                && ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "MelSpectrogram.mlmodelc"].allSatisfy {
-                    FileManager.default.fileExists(atPath: whisperFolder.appendingPathComponent($0).path)
-                }
-        }
+        if model == .whisperTurbo { return WhisperEngine.isInstalled }
         return AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory())
             && CtcModels.modelsExist(at: CtcModels.defaultCacheDirectory())
     }
@@ -40,15 +24,7 @@ actor TranscriptionService {
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
         if model == .whisperTurbo {
-            let folder = try await WhisperKit.download(
-                variant: Self.whisperVariant, downloadBase: Self.whisperCache,
-                progressCallback: { progress($0.fractionCompleted * 0.95) })
-            // Loading also downloads the tokenizer. Mark ready only after both succeed.
-            _ = try await WhisperKit(WhisperKitConfig(
-                modelFolder: folder.path, tokenizerFolder: Self.whisperCache,
-                verbose: false, prewarm: false, load: true, download: false))
-            try Data().write(to: Self.whisperReadyMarker, options: .atomic)
-            progress(1)
+            try await WhisperEngine.download(progress: progress)
             return
         }
         _ = try await AsrModels.downloadAndLoad(progressHandler: { p in
@@ -56,6 +32,35 @@ actor TranscriptionService {
         })
         _ = try await CtcModels.downloadAndLoad()
         progress(1.0)
+    }
+
+    /// Загружает Whisper заранее (при запуске), чтобы первая диктовка не ждала.
+    func prewarm(model: RecognitionModel = Prefs.recognitionModel) async {
+        guard model == .whisperTurbo, Self.modelsInstalled(model: model) else { return }
+        _ = try? await loadWhisper()
+    }
+
+    /// Освобождает Whisper до выхода из процесса: ggml-metal падает на
+    /// assert в глобальных деструкторах, если модель ещё загружена.
+    func unloadWhisper() {
+        whisper = nil
+    }
+
+    private func loadWhisper() async throws -> WhisperEngine {
+        guard Self.modelsInstalled(model: .whisperTurbo) else { throw DictationError.modelNotInstalled }
+        asrManager = nil
+        ctcModels = nil
+        if let whisper { return whisper }
+        let engine = try await WhisperEngine()
+        whisper = engine
+        return engine
+    }
+
+    /// Канонические написания терминов словаря, без повторов.
+    private static func vocabulary(from glossaryURL: URL) -> [String] {
+        guard let glossary = try? Glossary.load(from: glossaryURL) else { return [] }
+        var seen = Set<String>()
+        return glossary.terms.map(\.text).filter { seen.insert($0.lowercased()).inserted }
     }
 
     /// Ленивая инициализация менеджеров из кэша моделей.
@@ -86,22 +91,11 @@ actor TranscriptionService {
         }
         guard samples.count > 8000 else { throw DictationError.recordingTooShort }
         if model == .whisperTurbo {
-            guard Self.modelsInstalled(model: model) else { throw DictationError.modelNotInstalled }
-            asrManager = nil
-            ctcModels = nil
-            if whisper == nil {
-                whisper = try await WhisperKit(WhisperKitConfig(
-                    modelFolder: Self.whisperFolder.path, tokenizerFolder: Self.whisperCache,
-                    verbose: false, prewarm: false, load: true, download: false))
-            }
-            guard let whisper else { throw DictationError.modelNotInstalled }
-            let results = try await whisper.transcribe(
-                audioArray: samples,
-                decodeOptions: DecodingOptions(
-                    language: languageCode == "auto" ? nil : languageCode,
-                    detectLanguage: languageCode == "auto", skipSpecialTokens: true))
-            let text = results.map(\.text).joined(separator: " ")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let whisper = try await loadWhisper()
+            // Термины словаря — подсказка самому Whisper, а не только замены после.
+            let vocabulary = useDictionary ? Self.vocabulary(from: glossaryURL) : []
+            let text = try await whisper.transcribe(
+                samples, languageCode: languageCode, vocabulary: vocabulary)
             return finalize(text)
         }
         try await ensureLoaded(useDictionary: useDictionary)

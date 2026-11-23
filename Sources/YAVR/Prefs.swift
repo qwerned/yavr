@@ -97,7 +97,7 @@ enum Prefs {
         set { d.set(newValue, forKey: Key.language) }
     }
 
-    /// Языки диктовки в UI. Модель Parakeet v3 поддерживает 25+ европейских
+    /// Языки диктовки в UI. Модель Parakeet TDT 0.6B v3 поддерживает 25+ европейских
     /// языков (enum Language в FluidAudio) — чтобы добавить язык, достаточно
     /// дописать пару (код ISO, название) в этот список.
     static var dictationLanguages: [(code: String, name: String)] {

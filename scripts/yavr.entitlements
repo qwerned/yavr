@@ -5,5 +5,9 @@
     <!-- Hardened runtime блокирует аудиовход без этого entitlement -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!-- Самоподписанная identity без Team ID: без этого hardened runtime
+         не загружает даже свой же Contents/Frameworks/CTranscribe.framework -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
 </dict>
 </plist>
