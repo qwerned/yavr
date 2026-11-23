@@ -76,8 +76,14 @@ actor TranscriptionService {
     /// Полный пайплайн: сэмплы 16 kHz -> текст с терминами.
     func transcribe(
         samples: [Float], glossaryURL: URL, engine: ReplacementEngine, languageCode: String,
-        model: RecognitionModel = Prefs.recognitionModel, useDictionary: Bool = Prefs.useDictionary
+        model: RecognitionModel = Prefs.recognitionModel, useDictionary: Bool = Prefs.useDictionary,
+        fillerLanguages: [String]? = Prefs.fillerLanguages
     ) async throws -> String {
+        /// Распознавание → удаление паразитов → словарь.
+        func finalize(_ text: String) -> String {
+            let cleaned = fillerLanguages.map { FillerWords.remove(from: text, languages: $0) } ?? text
+            return useDictionary ? engine.apply(to: cleaned) : cleaned
+        }
         guard samples.count > 8000 else { throw DictationError.recordingTooShort }
         if model == .whisperTurbo {
             guard Self.modelsInstalled(model: model) else { throw DictationError.modelNotInstalled }
@@ -96,7 +102,7 @@ actor TranscriptionService {
                     detectLanguage: languageCode == "auto", skipSpecialTokens: true))
             let text = results.map(\.text).joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            return useDictionary ? engine.apply(to: text) : text
+            return finalize(text)
         }
         try await ensureLoaded(useDictionary: useDictionary)
         guard let asrManager else { throw DictationError.modelNotInstalled }
@@ -106,12 +112,11 @@ actor TranscriptionService {
         let plain = try await asrManager.transcribe(
             samples, decoderState: &decoderState, language: language)
 
-        guard useDictionary else { return plain.text }
-        guard let ctcModels else { return engine.apply(to: plain.text) }
+        guard useDictionary, let ctcModels else { return finalize(plain.text) }
         let boostedText = await boost(
             result: plain, samples: samples, glossaryURL: glossaryURL, ctcModels: ctcModels)
 
-        return engine.apply(to: boostedText)
+        return finalize(boostedText)
     }
 
     /// Boosting-проход; при любом сбое тихо возвращает небустованный текст —

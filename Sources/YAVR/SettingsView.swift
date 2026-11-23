@@ -66,6 +66,7 @@ struct SubRowLabel: View {
 struct GeneralTab: View {
     @AppStorage(Prefs.Key.recognitionModel) private var recognitionModel = RecognitionModel.parakeet.rawValue
     @AppStorage(Prefs.Key.useDictionary) private var useDictionary = true
+    @AppStorage(Prefs.Key.removeFillerWords) private var removeFillerWords = true
     @State private var downloadError: String?
     @AppStorage(Prefs.Key.triggerMode) private var triggerMode = "hold"
     @AppStorage(Prefs.Key.holdModifier) private var holdModifier = "rightOption"
@@ -164,6 +165,10 @@ struct GeneralTab: View {
                 Toggle(isOn: $useDictionary) {
                     RowLabel(icon: "text.book.closed", color: .indigo, text: "Использовать словарь",
                              sub: "Замены терминов и акустическая коррекция")
+                }
+                Toggle(isOn: $removeFillerWords) {
+                    RowLabel(icon: "scissors", color: .pink, text: "Убирать «э-э» и «хм»",
+                             sub: "Удаляет звуки-заполнители из распознанного текста")
                 }
                 LabeledContent {
                     Picker("", selection: $insertMode) {

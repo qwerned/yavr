@@ -28,6 +28,13 @@ final class Recorder {
     /// (для стриминга в облачный STT). Сэмплы всё равно копятся в samples.
     var onAudioChunk: ((Data) -> Void)?
 
+    /// Уровень громкости для индикатора: level 0…1 и флаг клиппинга.
+    /// Вызывается на main не чаще ~30 раз в секунду.
+    var onLevel: ((_ level: Float, _ clipping: Bool) -> Void)?
+
+    /// Состояние измерителя; меняется только в потоке tap.
+    private var meter = LevelMeter()
+
     var isRecording: Bool { recording }
 
     func start(microphoneUID: String) throws {
@@ -58,6 +65,7 @@ final class Recorder {
         }
 
         lock.lock(); samples.removeAll(); lock.unlock()
+        meter = LevelMeter()
 
         let hasChunkCallback = onAudioChunk != nil
         recLog.notice("start: installing tap, onAudioChunk=\(hasChunkCallback)")
@@ -73,6 +81,13 @@ final class Recorder {
             if let chunkCallback {
                 let pcm16 = Self.floatToPCM16(converted)
                 chunkCallback(pcm16)
+            }
+
+            if let reading = self.meter.process(converted) {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.recording else { return }
+                    self.onLevel?(reading.level, reading.clipping)
+                }
             }
         }
 
@@ -123,6 +138,37 @@ final class Recorder {
         lock.lock()
         defer { samples.removeAll(); lock.unlock() }
         return samples
+    }
+}
+
+/// Сглаженный уровень речи над шумом: быстро растёт, медленно спадает.
+/// Клиппинг держится 500 мс, чтобы индикатор успел покраснеть.
+private struct LevelMeter {
+    private var noiseFloor: Float = 0.008
+    private var smoothed: Float = 0
+    private var clipUntil: Date = .distantPast
+    private var lastEmit: Date = .distantPast
+
+    mutating func process(_ buffer: [Float]) -> (level: Float, clipping: Bool)? {
+        guard !buffer.isEmpty else { return nil }
+        var sum: Float = 0
+        var peak: Float = 0
+        for x in buffer {
+            sum += x * x
+            peak = max(peak, abs(x))
+        }
+        let rms = (sum / Float(buffer.count)).squareRoot()
+
+        noiseFloor = max(0.004, noiseFloor * 0.96 + min(rms, noiseFloor * 2) * 0.04)
+        let target = min(max((rms - noiseFloor) / 0.16, 0), 1)
+        let k: Float = target > smoothed ? 0.58 : 0.2
+        smoothed += (target - smoothed) * k
+
+        let now = Date()
+        if peak >= 0.98 { clipUntil = now.addingTimeInterval(0.5) }
+        guard now.timeIntervalSince(lastEmit) >= 1.0 / 30 else { return nil }
+        lastEmit = now
+        return (smoothed, now < clipUntil)
     }
 }
 

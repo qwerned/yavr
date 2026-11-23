@@ -296,6 +296,30 @@ do {
     expect(String(RightModifier.control.isPressed(flags: 0x40000 | 0x01 | 0x2000)), "true")
 }
 
+do {  // FillerWords
+    func f(_ t: String, _ langs: [String] = ["ru", "en"]) -> String { FillerWords.remove(from: t, languages: langs) }
+    expect(f("Эээ, давай сделаем так."), "Давай сделаем так.")
+    expect(f("Давай, эм, сделаем так."), "Давай сделаем так.")
+    expect(f("Ну эээ давай."), "Ну давай.")
+    expect(f("Хм. Ладно."), "Ладно.")
+    expect(f("Сделаем так, ммм."), "Сделаем так.")
+    expect(f("Хм?"), "Хм?")
+    expect(f("Эм !"), "Эм !")
+    expect(f("Это система."), "Это система.")
+    expect(f("Эмма пришла."), "Эмма пришла.")
+    expect(f("Um, let's do it."), "Let's do it.")
+    expect(f("I was, uh, thinking."), "I was thinking.")
+    expect(f("ER department"), "ER department")
+    expect(f("Привет"), "Привет")
+    expect(f("Сделаем так, ммм"), "Сделаем так")
+    expect(f("Хм... ладно"), "Ладно")
+    expect(f("сайт эм.ru"), "сайт эм.ru")
+    expect(f("пункт-эм тут"), "пункт-эм тут")
+    expect(f("Um, let's do it.", ["ru"]), "Um, let's do it.", "en filler kept for ru only")
+    expect(f("Эээ давай", []), "Эээ давай")
+    expect(f("  Привет  "), "  Привет  ", "unchanged input returned as is")
+}
+
 if failures == 0 {
     print("OK: \(checks) checks passed")
 } else {

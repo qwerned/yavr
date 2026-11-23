@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         transcriptionTask?.cancel()
         session.cancel()
         _ = stopRecordingResources()
+        indicator.hide()
         abandonCloudSession()
         hotkeys.stop()
     }
@@ -50,7 +51,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let samples = recorder.stop()
         ducker.restore()
         recordingStart = nil
-        indicator.hide()
         return samples
     }
 
@@ -71,6 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         recorder.onLimitReached = { [weak self] in
             self?.finishRecording()
         }
+        recorder.onLevel = { [weak self] level, clipping in
+            self?.indicator.updateLevel(level, clipping: clipping)
+        }
+        indicator.onCancel = { [weak self] in self?.cancelDictation() }
+        indicator.onFinish = { [weak self] in self?.finishRecording() }
 
         hotkeys.onHoldStart = { [weak self] in self?.beginRecording() }
         hotkeys.onHoldEnd = { [weak self] in self?.finishRecording() }
@@ -150,13 +155,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             try recorder.start(microphoneUID: Prefs.microphoneUID)
             recordingStart = Date()
             statusController.state = .recording
-            indicator.show(.recording)
+            // Облако без живого ввода в поле показывает текст в капсуле.
+            indicator.show(.recording, streamsText: model.isCloud && liveTyper == nil)
             if Prefs.playSounds { NSSound(named: "Tink")?.play() }
         } catch {
             _ = stopRecordingResources()
             abandonCloudSession()
             session.finish(sessionID)
             hotkeys.refreshConfiguration()
+            indicator.showError(error.localizedDescription)
             statusController.state = .error(error.localizedDescription)
         }
     }
@@ -177,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             GlossaryStore.shared.reload()
             let engine = GlossaryStore.shared.replacementEngine
             let useDictionary = Prefs.useDictionary
+            let fillerLanguages = Prefs.fillerLanguages
             // Звука больше не будет: сервис дошлёт накопленное и закроет стрим.
             cloudAudio?.finish()
             cloudAudio = nil
@@ -191,9 +199,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                         throw CloudSTTError.connectionFailed(startError)
                     }
                     let raw = try await CloudTranscriptionService.shared.finishSession()
-                    guard !Task.isCancelled, self.session.finish(sessionID) else { return }
+                    guard !Task.isCancelled, self.session.finish(sessionID) else {
+                        // Отмена: напечатанный по ходу речи текст стираем.
+                        if Task.isCancelled { _ = await typer?.finish(with: "") }
+                        return
+                    }
                     self.transcriptionTask = nil
-                    let text = useDictionary ? engine.apply(to: raw) : raw
+                    // Распознавание → паразиты → словарь.
+                    let cleaned = fillerLanguages.map { FillerWords.remove(from: raw, languages: $0) } ?? raw
+                    let text = useDictionary ? engine.apply(to: cleaned) : cleaned
                     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                         _ = await typer?.finish(with: "")
                         self.indicator.hide()
@@ -207,9 +221,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     }
                 } catch {
                     await CloudTranscriptionService.shared.cancel()
-                    guard self.session.finish(sessionID) else { return }
+                    guard self.session.finish(sessionID) else {
+                        if Task.isCancelled { _ = await typer?.finish(with: "") }
+                        return
+                    }
                     self.transcriptionTask = nil
-                    self.indicator.hide()
+                    self.indicator.showError(error.localizedDescription)
                     self.statusController.state = .error(error.localizedDescription)
                 }
             }
@@ -242,9 +259,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             } catch {
                 guard self.session.finish(sessionID) else { return }
                 self.transcriptionTask = nil
-                self.indicator.hide()
+                self.indicator.showError(error.localizedDescription)
                 self.statusController.state = .error(error.localizedDescription)
             }
+        }
+    }
+
+    /// Отмена (кнопка × в капсуле): запись выбрасывается, текст не вставляется.
+    private func cancelDictation() {
+        switch session.phase {
+        case .idle:
+            indicator.hide()
+        case .recording:
+            let typer = liveTyper
+            _ = stopRecordingResources()
+            indicator.hide()
+            abandonCloudSession()
+            session.cancel()
+            hotkeys.refreshConfiguration()
+            if let typer { Task { _ = await typer.finish(with: "") } }
+            refreshIdleState()
+        case .transcribing:
+            transcriptionTask?.cancel()
+            transcriptionTask = nil
+            session.cancel()
+            indicator.hide()
+            if Prefs.recognitionModel.isCloud {
+                Task { await CloudTranscriptionService.shared.cancel() }
+            }
+            refreshIdleState()
         }
     }
 
@@ -345,7 +388,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func showDraft(_ text: String) {
         guard session.phase == .recording else { return }
-        if let liveTyper { liveTyper.update(text) } else { indicator.updateInterimText(text) }
+        // Паразиты убираются и из черновика, чтобы он не расходился со вставкой.
+        let shown = Prefs.fillerLanguages.map { FillerWords.remove(from: text, languages: $0) } ?? text
+        if let liveTyper { liveTyper.update(shown) } else { indicator.updateInterimText(shown) }
     }
 
     /// Запись сорвалась или приложение закрывается: дождаться запуска сессии

@@ -7,6 +7,7 @@ enum Prefs {
     enum Key {
         static let recognitionModel = "recognitionModel"
         static let useDictionary = "useDictionary"
+        static let removeFillerWords = "removeFillerWords"
         static let triggerMode = "triggerMode"  // "hold" | "toggle"
         static let holdModifier = "holdModifier"  // "rightOption" | "rightCommand" | "rightControl"
         static let insertMode = "insertMode"  // "paste" | "clipboard"
@@ -27,6 +28,7 @@ enum Prefs {
         d.register(defaults: [
             Key.recognitionModel: RecognitionModel.parakeet.rawValue,
             Key.useDictionary: true,
+            Key.removeFillerWords: true,
             Key.triggerMode: "hold",
             Key.holdModifier: "rightOption",
             Key.insertMode: "paste",
@@ -50,6 +52,20 @@ enum Prefs {
 
     static var useDictionary: Bool {
         d.object(forKey: Key.useDictionary) as? Bool ?? true
+    }
+
+    static var removeFillerWords: Bool {
+        d.object(forKey: Key.removeFillerWords) as? Bool ?? true
+    }
+
+    /// Языки, паразиты которых удаляются; nil — удаление выключено.
+    /// При автоопределении языка — и русские, и английские.
+    static var fillerLanguages: [String]? {
+        guard removeFillerWords else { return nil }
+        switch language {
+        case "ru", "en": return [language]
+        default: return ["ru", "en"]
+        }
     }
 
     static var duckAudio: Bool {

@@ -1,153 +1,200 @@
 import AppKit
 import SwiftUI
 
-/// Плавающая капсула внизу по центру, над Dock. Шапка со звуковой дорожкой,
-/// языком и таймером, под ней распознаваемый текст. Фон полупрозрачный,
-/// облачко растёт по высоте вверх под текст; ширина — до трети экрана.
+/// Однострочная капсула записи внизу по центру, над Dock:
+/// × · точки громкости · текст · таймер · ✓.
+/// Все цвета системные: капсула следует светлой/тёмной теме и акцентному
+/// цвету из Системных настроек. Панель не забирает фокус у активного
+/// приложения, но кнопки реагируют на первый же клик.
 @MainActor
 final class RecordingIndicator {
-    enum Mode {
+    enum Mode: Equatable {
         case recording
         case transcribing
+        case error(String)
     }
 
+    /// Кнопка ×: те же действия, что у отмены диктовки.
+    var onCancel: (() -> Void)?
+    /// Кнопка ✓: остановить запись и распознать.
+    var onFinish: (() -> Void)?
+
     private var panel: NSPanel?
-    private var hostingView: NSHostingView<IndicatorView>?
     private let model = IndicatorModel()
     private var startTime: Date?
     private var timer: Timer?
+    private var errorHideTask: Task<Void, Never>?
+    private var colorObserver: NSObjectProtocol?
 
-    /// Потолок ширины облачка — треть экрана.
-    private static let maxWidthFraction: CGFloat = 1.0 / 3.0
-    /// Минимальная ширина облачка (хватает на шапку).
-    private static let minWidth: CGFloat = 240
+    private static let height: CGFloat = 40
+    private static let maxWidth: CGFloat = 440
     /// Отступ от нижнего края рабочей области (над Dock).
     private static let bottomGap: CGFloat = 12
-    /// Горизонтальные поля внутри облачка (padding слева+справа).
-    private static let hInset: CGFloat = 32
-    /// Высота шапки (padding 10+10 + содержимое 16).
-    private static let headerHeight: CGFloat = 36
-    /// Всё, кроме самого текста: шапка + разделитель + поля блока текста.
-    private static let chromeHeight: CGFloat = headerHeight + 1 + 11 + 14
+    /// Сдвиг снизу вверх при появлении.
+    private static let appearOffset: CGFloat = 6
+    /// Ошибка висит столько, если её не закрыли кнопкой ×.
+    private static let errorDuration: Duration = .seconds(5)
 
-    static func wordCount(_ text: String) -> String { russianWordCount(text) }
-
-    func show(_ mode: Mode) {
-        model.mode = mode
-        model.interimText = ""
-        let language = Prefs.language
-        model.lang = ["auto", "multi"].contains(language) ? "AUTO" : language.uppercased()
+    /// `streamsText` — движок присылает текст по ходу речи (облако без живого
+    /// ввода в поле): пока текста нет, а речь идёт, вместо статуса пульсируют точки.
+    func show(_ mode: Mode, streamsText: Bool = false) {
+        errorHideTask?.cancel()
+        errorHideTask = nil
         switch mode {
         case .recording:
+            model.interimText = ""
+            model.streamsText = streamsText
+            model.level = 0
+            model.clipping = false
+            model.heardSpeech = false
             startTime = Date()
             model.elapsed = "0:00"
             startTimer()
         case .transcribing:
+            // Таймер замирает, уже показанный текст остаётся.
             stopTimer()
+            model.level = 0
+            model.clipping = false
+        case .error:
+            stopTimer()
+            errorHideTask = Task { [weak self] in
+                try? await Task.sleep(for: Self.errorDuration)
+                guard !Task.isCancelled else { return }
+                self?.hide()
+            }
         }
-        presentPanel()
+        model.languageName = Prefs.languageName(Prefs.language)
+        model.mode = mode
+        present()
     }
+
+    func showError(_ message: String) { show(.error(message)) }
 
     func hide() {
         stopTimer()
+        errorHideTask?.cancel()
+        errorHideTask = nil
         startTime = nil
         model.interimText = ""
+        model.level = 0
+        model.clipping = false
         panel?.orderOut(nil)
     }
 
-    /// Показывает распознаваемый текст; облачко пересчитывает размер и растёт
-    /// по высоте, перенося строки в пределах половины ширины экрана.
     func updateInterimText(_ text: String) {
         model.interimText = text
-        // Раскладка SwiftUI применяет изменение на следующем тике main.
-        DispatchQueue.main.async { [weak self] in self?.sizeAndAnchor() }
     }
 
-    private func presentPanel() {
-        if panel == nil {
-            let view = NSHostingView(rootView: IndicatorView(model: model))
-            let newPanel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: Self.minWidth, height: 44),
-                styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
-                backing: .buffered, defer: false)
-            // contentView напрямую, а не contentViewController: иначе окно
-            // само переразмеряется под контент с привязкой к верхнему углу и
-            // уползает вниз, перекрывая наш setFrame.
-            view.autoresizingMask = [.width, .height]
-            // Иначе хостинг сам подгоняет окно под свой контент, держа на месте
-            // верхний край, — и нижний уезжает на Dock. Размер задаёт только
-            // sizeAndAnchor.
-            view.sizingOptions = []
-            newPanel.contentView = view
-            newPanel.isFloatingPanel = true
-            newPanel.level = .statusBar
-            newPanel.backgroundColor = .clear
-            newPanel.isOpaque = false
-            newPanel.hasShadow = true
-            newPanel.ignoresMouseEvents = true
-            newPanel.hidesOnDeactivate = false
-            newPanel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            hostingView = view
-            panel = newPanel
+    func updateLevel(_ level: Float, clipping: Bool) {
+        guard model.mode == .recording else { return }
+        if clipping && !model.clipping {
+            NSAccessibility.post(
+                element: NSApp as Any, notification: .announcementRequested,
+                userInfo: [
+                    .announcement: "Слишком громко",
+                    .priority: NSAccessibilityPriorityLevel.high.rawValue,
+                ])
         }
-        sizeAndAnchor()
-        panel?.orderFrontRegardless()
+        model.level = Double(level)
+        model.clipping = clipping
+        if level > 0.12 && !model.heardSpeech { model.heardSpeech = true }
     }
 
-    /// Считает размер облачка отдельным замерочным хостингом и ставит панель
-    /// внизу по центру. Замер детерминированный: фиксируем ширину — получаем
-    /// честную высоту при переносе строк.
-    private func sizeAndAnchor() {
-        guard let panel else { return }
-        let screen = NSScreen.main ?? NSScreen.screens.first
-        guard let screen else { return }
+    // MARK: - Панель
+
+    private func makePanel() -> NSPanel {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: Self.maxWidth, height: Self.height),
+            styleMask: [.nonactivatingPanel, .borderless],
+            backing: .buffered, defer: false)
+        panel.isFloatingPanel = true
+        panel.level = .statusBar
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.hidesOnDeactivate = false
+        panel.isMovable = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        // Системный материал всплывающих окон: сам подстраивается под тему
+        // и под «Уменьшить прозрачность» (становится непрозрачным).
+        let effect = NSVisualEffectView()
+        effect.material = .popover
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.maskImage = Self.capsuleMask(height: Self.height)
+
+        let hosting = FirstMouseHostingView(rootView: IndicatorView(
+            model: model,
+            onCancel: { [weak self] in self?.onCancel?() },
+            onFinish: { [weak self] in self?.onFinish?() }))
+        hosting.sizingOptions = []
+        hosting.frame = effect.bounds
+        hosting.autoresizingMask = [.width, .height]
+        effect.addSubview(hosting)
+        panel.contentView = effect
+
+        // Смена акцентного цвета не всегда перерисовывает SwiftUI сама.
+        colorObserver = NotificationCenter.default.addObserver(
+            forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.colorEpoch += 1 }
+        }
+        return panel
+    }
+
+    /// Растягиваемая маска-капсула: скруглены только торцы.
+    private static func capsuleMask(height: CGFloat) -> NSImage {
+        let radius = height / 2
+        let size = NSSize(width: height + 1, height: height)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
+    }
+
+    private func targetFrame() -> NSRect? {
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return nil }
         let visible = screen.visibleFrame
+        let width = min(Self.maxWidth, screen.frame.width - 32).rounded()
+        return NSRect(
+            x: (visible.midX - width / 2).rounded(),
+            y: visible.minY + Self.bottomGap,
+            width: width, height: Self.height)
+    }
 
-        let maxWidth = (visible.width * Self.maxWidthFraction).rounded()
+    private func present() {
+        let panel = self.panel ?? makePanel()
+        self.panel = panel
+        guard let frame = targetFrame() else { return }
 
-        let width: CGFloat
-        let height: CGFloat
-        if model.mode == .recording {
-            let display = displayText()
-            // Ширина под текст, но не уже шапки и не шире трети экрана.
-            let ideal = ceil(textSize(display, width: 100_000).width) + Self.hInset
-            width = min(max(ideal, Self.minWidth), maxWidth)
-            // Высота — реальная высота текста при этой ширине (растём вверх).
-            let textH = textSize(display, width: width - Self.hInset).height
-            height = ceil(Self.chromeHeight + textH + 3)  // +3 — защита от обрезки
-        } else {
-            width = Self.minWidth
-            height = Self.headerHeight  // распознавание — только шапка
+        if panel.isVisible {
+            panel.setFrame(frame, display: true)
+            return
         }
 
-        let size = NSSize(width: width.rounded(), height: height)
-        // Нижний край прибит над Dock (origin.y постоянный) — облачко растёт
-        // только вверх, высотой.
-        let origin = NSPoint(
-            x: (visible.midX - size.width / 2).rounded(),
-            y: visible.minY + Self.bottomGap)
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        // Появление: проявление за 180 мс и сдвиг на 6 pt снизу вверх
+        // (сдвиг — только если не включено «Уменьшить движение»).
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        var start = frame
+        if !reduceMotion { start.origin.y -= Self.appearOffset }
+        panel.setFrame(start, display: false)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        panel.invalidateShadow()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(frame, display: true)
+            panel.animator().alphaValue = 1
+        }
     }
 
-    /// Строка, которую реально рисует облачко (с хвостом-счётчиком слов).
-    private func displayText() -> String {
-        guard !model.interimText.isEmpty else { return "Говорите…" }
-        return model.interimText + "  · " + Self.wordCount(model.interimText)
-    }
-
-    /// Размер текста при заданной ширире (переносом), шрифт и межстрочный
-    /// интервал — те же, что в IndicatorView.
-    private func textSize(_ s: String, width: CGFloat) -> CGSize {
-        let ps = NSMutableParagraphStyle()
-        ps.lineSpacing = 2
-        let attr = NSAttributedString(
-            string: s,
-            attributes: [.font: NSFont.systemFont(ofSize: 15), .paragraphStyle: ps])
-        let r = attr.boundingRect(
-            with: NSSize(width: width, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading])
-        return NSSize(width: ceil(r.width), height: ceil(r.height))
-    }
+    // MARK: - Таймер
 
     private func startTimer() {
         stopTimer()
@@ -166,133 +213,243 @@ final class RecordingIndicator {
     }
 }
 
+/// Кнопки неактивной панели срабатывают с первого клика.
+private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 @MainActor
 private final class IndicatorModel: ObservableObject {
     @Published var mode: RecordingIndicator.Mode = .recording
-    @Published var elapsed: String = "0:00"
-    @Published var interimText: String = ""
-    @Published var lang: String = "RU"
+    @Published var elapsed = "0:00"
+    @Published var interimText = ""
+    @Published var languageName = ""
+    @Published var streamsText = false
+    @Published var level: Double = 0
+    @Published var clipping = false
+    /// В этой записи уже звучала речь: ждём текст от движка.
+    @Published var heardSpeech = false
+    @Published var colorEpoch = 0
 }
 
-/// Индиго-акцент дорожки (из design/yavr-ui-mock.html).
-private let waveAccent = Color(.sRGB, red: 94 / 255, green: 92 / 255, blue: 230 / 255)
+// MARK: - Вью
+
+private extension Color {
+    static let label = Color(nsColor: .labelColor)
+    static let secondaryLabel = Color(nsColor: .secondaryLabelColor)
+    static let quaternaryLabel = Color(nsColor: .quaternaryLabelColor)
+    static let separator = Color(nsColor: .separatorColor)
+    static let systemRed = Color(nsColor: .systemRed)
+    static let controlAccent = Color(nsColor: .controlAccentColor)
+}
 
 private struct IndicatorView: View {
-    @ObservedObject fileprivate var model: IndicatorModel
+    @ObservedObject var model: IndicatorModel
+    let onCancel: () -> Void
+    let onFinish: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            headerView
-            if model.mode == .recording {
-                Divider().overlay(Color.primary.opacity(0.10))
-                transcriptView
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-        )
+    private var isError: Bool {
+        if case .error = model.mode { return true }
+        return false
     }
 
-    @ViewBuilder private var headerView: some View {
-        HStack(spacing: 10) {
+    var body: some View {
+        HStack(spacing: 8) {
+            CancelButton(action: onCancel)
             switch model.mode {
-            case .recording:
-                PulsingDot()
-                Waveform()
-                Spacer(minLength: 8)
-                Text(model.lang)
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+            case .error(let message):
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.systemRed)
+                Text(message)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.label)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(message)
+            case .recording, .transcribing:
+                LevelDots(
+                    level: model.level, clipping: model.clipping,
+                    recording: model.mode == .recording)
+                TranscriptLine(
+                    text: model.interimText,
+                    recording: model.mode == .recording,
+                    waitingForText: model.streamsText && model.heardSpeech)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text(model.elapsed)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12))
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            case .transcribing:
-                ProgressView().controlSize(.small).scaleEffect(0.8)
-                Text("Распознаю…")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
+                    .foregroundStyle(Color.secondaryLabel)
+                    .frame(width: 36, alignment: .trailing)
+                    .help("Язык: \(model.languageName)")
+                if model.mode == .recording {
+                    FinishButton(action: onFinish).id(model.colorEpoch)
+                } else {
+                    Circle()
+                        .fill(Color.quaternaryLabel)
+                        .frame(width: 24, height: 24)
+                        .overlay(ProgressView().controlSize(.small).scaleEffect(0.75))
+                        .accessibilityLabel("Распознаю")
+                }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(
+            Capsule().strokeBorder(
+                isError ? Color.systemRed.opacity(0.4) : Color.separator, lineWidth: 1))
+    }
+}
+
+private struct CancelButton: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.secondaryLabel)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(hovering ? Color.quaternaryLabel : .clear))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Отменить")
+        .accessibilityLabel("Отменить")
+    }
+}
+
+private struct FinishButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color(nsColor: .alternateSelectedControlTextColor))
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(Color.controlAccent))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Готово")
+        .accessibilityLabel("Готово")
+    }
+}
+
+/// 9 точек, которые растут и расходятся по вертикали вместе с громкостью.
+private struct LevelDots: View {
+    let level: Double
+    let clipping: Bool
+    let recording: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// (base, response, lift) для каждой точки.
+    private static let dots: [(base: Double, response: Double, lift: Double)] = [
+        (0.64, 0.45, 1), (0.76, 0.75, -1), (0.90, 1.00, 1),
+        (1.00, 1.25, -1), (0.86, 0.90, 1), (0.72, 1.10, -1),
+        (0.82, 0.70, 1), (0.68, 0.55, -1), (0.58, 0.35, 1),
+    ]
+
+    var body: some View {
+        let shown = recording ? level : 0
+        TimelineView(.animation(paused: recording || reduceMotion)) { context in
+            HStack(spacing: 1) {
+                ForEach(Self.dots.indices, id: \.self) { i in
+                    let dot = Self.dots[i]
+                    Circle()
+                        .fill(clipping ? Color.systemRed : Color.label.opacity(0.8))
+                        .frame(width: 4, height: 4)
+                        .scaleEffect(dot.base + shown * dot.response)
+                        .offset(y: shown * dot.lift * 2)
+                }
+            }
+            .frame(width: 44, height: 24)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: shown)
+            .opacity(pulseOpacity(at: context.date))
+        }
+        .accessibilityHidden(true)
     }
 
-    @ViewBuilder private var transcriptView: some View {
-        Group {
-            if model.interimText.isEmpty {
-                Text("Говорите…")
-                    .foregroundStyle(.tertiary)
+    /// Распознавание: блок мягко пульсирует прозрачностью.
+    private func pulseOpacity(at date: Date) -> Double {
+        guard !recording, !reduceMotion else { return 1 }
+        let phase = date.timeIntervalSinceReferenceDate * 2 * .pi / 1.4
+        return 0.65 + 0.35 * cos(phase)
+    }
+}
+
+/// Одна строка текста. Если не влезает — прижата вправо (последние слова
+/// видны), левый край растворяется.
+private struct TranscriptLine: View {
+    let text: String
+    let recording: Bool
+    let waitingForText: Bool
+
+    private static let fadeWidth: CGFloat = 24
+
+    var body: some View {
+        if text.isEmpty {
+            if recording && waitingForText {
+                TypingDots()
             } else {
-                Text(model.interimText)
-                    + Text("  · \(russianWordCount(model.interimText))")
-                    .foregroundColor(.secondary)
+                Text(recording ? "Слушаю…" : "Распознаю…")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.secondaryLabel)
+                    .lineLimit(1)
             }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                line
+                line
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
+                    .clipped()
+                    .mask(
+                        HStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                                .frame(width: Self.fadeWidth)
+                            Rectangle()
+                        })
+            }
+            .accessibilityElement()
+            .accessibilityLabel(text)
         }
-        .font(.system(size: 15, weight: .regular))
-        .lineSpacing(2)
-        .multilineTextAlignment(.leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.top, 11)
-        .padding(.bottom, 14)
+    }
+
+    private var line: some View {
+        Text(text)
+            .font(.system(size: 13))
+            .foregroundStyle(Color.label)
+            .lineLimit(1)
+            .fixedSize()
     }
 }
 
-/// «2 слова», «5 слов» — счётчик для хвоста реплики. Один и тот же для
-/// отрисовки и для замера размеров облачка, чтобы они совпадали.
-func russianWordCount(_ text: String) -> String {
-    let n = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
-    let a = n % 100, b = n % 10
-    let noun: String
-    if a >= 11 && a <= 14 { noun = "слов" }
-    else if b == 1 { noun = "слово" }
-    else if b >= 2 && b <= 4 { noun = "слова" }
-    else { noun = "слов" }
-    return "\(n) \(noun)"
-}
-
-private struct PulsingDot: View {
-    @State private var on = false
-    var body: some View {
-        Circle()
-            .fill(Color.red)
-            .frame(width: 9, height: 9)
-            .opacity(on ? 0.4 : 1.0)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: on)
-            .onAppear { on = true }
-            .onDisappear { on = false }
-    }
-}
-
-private struct Waveform: View {
-    @State private var animating = false
-    private let heights: [CGFloat] = [6, 12, 16, 9, 13, 6]
+/// Три пульсирующие точки: речь идёт, текст вот-вот появится.
+private struct TypingDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(alignment: .center, spacing: 2.5) {
-            ForEach(heights.indices, id: \.self) { i in
-                Capsule()
-                    .fill(waveAccent)
-                    .frame(width: 2.5, height: heights[i])
-                    .scaleEffect(y: animating ? 1.0 : 0.5, anchor: .center)
-                    .animation(
-                        .easeInOut(duration: 0.55)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(i) * 0.12),
-                        value: animating)
+        TimelineView(.animation(paused: reduceMotion)) { context in
+            HStack(spacing: 3) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(Color.secondaryLabel)
+                        .frame(width: 4, height: 4)
+                        .opacity(opacity(i, at: context.date))
+                }
             }
         }
-        .frame(height: 16)
-        .onAppear { animating = true }
-        .onDisappear { animating = false }
+        .accessibilityLabel("Слушаю")
+    }
+
+    private func opacity(_ index: Int, at date: Date) -> Double {
+        guard !reduceMotion else { return 1 }
+        let t = date.timeIntervalSinceReferenceDate - Double(index) * 0.15
+        return 0.3 + 0.7 * (0.5 + 0.5 * sin(t * 2 * .pi / 0.9))
     }
 }
