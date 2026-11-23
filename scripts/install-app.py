@@ -64,10 +64,13 @@ def stop(app, executable):
 
 
 def install(source, target, backups, launch=True):
+    """backups=None — без резервной копии настроек."""
     validate(source)
     previous = metadata(target) if target.exists() else None
-    backups.mkdir(parents=True, exist_ok=True)
-    backup = Path(tempfile.mkdtemp(prefix=datetime.datetime.now().strftime('%Y%m%d-%H%M%S-'), dir=backups))
+    backup = None
+    if backups is not None:
+        backups.mkdir(parents=True, exist_ok=True)
+        backup = Path(tempfile.mkdtemp(prefix=datetime.datetime.now().strftime('%Y%m%d-%H%M%S-'), dir=backups))
     # A staging directory on the target volume makes bundle replacement a rename.
     stage_root = Path(tempfile.mkdtemp(prefix='.yavr-install-', dir=target.parent))
     staged, rollback = stage_root / 'YAVR.app', stage_root / 'previous.app'
@@ -77,7 +80,7 @@ def install(source, target, backups, launch=True):
     try:
         shutil.copytree(source, staged, symlinks=True)
         validate(staged)
-        if current is not None:
+        if current is not None and backup is not None:
             (backup / 'current-preferences.plist').write_bytes(plistlib.dumps(current))
         if previous:
             stop(target, previous['CFBundleExecutable'])
@@ -101,13 +104,14 @@ def install(source, target, backups, launch=True):
         # Keep rollback intact if recovery itself failed.
         if succeeded or not rollback.exists():
             shutil.rmtree(stage_root)
-    print(f'Installed: {target}\nSettings backup: {backup}')
+    print(f'Installed: {target}' + (f'\nSettings backup: {backup}' if backup else ''))
     return backup
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('source', type=Path)
+    parser.add_argument('--no-backup', action='store_true', help='не сохранять копию настроек')
     args = parser.parse_args()
     install(args.source.resolve(), Path('/Applications/YAVR.app'),
-            Path(__file__).resolve().parent.parent / 'dist/backups')
+            None if args.no_backup else Path(__file__).resolve().parent.parent / 'dist/backups')
