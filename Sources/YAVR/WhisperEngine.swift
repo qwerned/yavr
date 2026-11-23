@@ -35,6 +35,10 @@ final class WhisperEngine: @unchecked Sendable {
             && ModelDownloader.isInstalled(vadFile, in: directory)
     }
 
+    static func removeFiles() {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
     static func download(progress: @escaping @Sendable (Double) -> Void) async throws {
         let total = Double(modelFile.size + vadFile.size)
         try await ModelDownloader.download(vadFile, to: directory) { _ in }

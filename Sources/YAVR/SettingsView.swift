@@ -272,9 +272,10 @@ struct GeneralTab: View {
         downloadProgress = 0
         downloadError = nil
         let model = Prefs.recognitionModel
+        let force = modelInstalled
         Task {
             do {
-                try await TranscriptionService.shared.downloadModels(model: model) { fraction in
+                try await TranscriptionService.shared.downloadModels(model: model, force: force) { fraction in
                     Task { @MainActor in downloadProgress = fraction }
                 }
                 await MainActor.run {

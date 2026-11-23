@@ -101,6 +101,7 @@ private final class ResumableTransfer: NSObject, URLSessionDataDelegate, @unchec
     private var written: Int64 = 0
     private var failure: Error?
     private var cancelled = false
+    private var lastReport = Date.distantPast
     private var continuation: CheckedContinuation<Void, Error>?
 
     init(url: URL, part: URL, expected: Int64, progress: @escaping @Sendable (Int64) -> Void) {
@@ -172,7 +173,12 @@ private final class ResumableTransfer: NSObject, URLSessionDataDelegate, @unchec
         do {
             try handle?.write(contentsOf: data)
             written += Int64(data.count)
-            progress(written)
+            // Не чаще 10 раз в секунду: куски приходят десятками тысяч.
+            let now = Date()
+            if now.timeIntervalSince(lastReport) >= 0.1 || written == expected {
+                lastReport = now
+                progress(written)
+            }
         } catch {
             failure = error
             dataTask.cancel()

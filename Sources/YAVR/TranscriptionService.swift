@@ -10,6 +10,12 @@ actor TranscriptionService {
     private var ctcModels: CtcModels?
 
     private var whisper: WhisperEngine?
+    /// Идущая загрузка Whisper: все вызывающие ждут одну и ту же (актор
+    /// реентерабелен, иначе прогрев и первая диктовка загрузили бы две модели).
+    private var whisperLoad: Task<WhisperEngine, Error>?
+    /// Сколько прогонов Whisper идёт сейчас; выгрузка ждёт, пока станет 0.
+    private var whisperRuns = 0
+    private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// Готовность выбранного движка (для Whisper — модель и Silero VAD).
     nonisolated static func modelsInstalled(model: RecognitionModel = Prefs.recognitionModel) -> Bool {
@@ -19,11 +25,16 @@ actor TranscriptionService {
     }
 
     /// Скачивает выбранную модель и необходимые ей ресурсы.
+    /// `force` — «Скачать заново»: установленные файлы удаляются и качаются снова.
     func downloadModels(
-        model: RecognitionModel = Prefs.recognitionModel,
+        model: RecognitionModel = Prefs.recognitionModel, force: Bool = false,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
         if model == .whisperTurbo {
+            if force {
+                await unloadWhisper()
+                WhisperEngine.removeFiles()
+            }
             try await WhisperEngine.download(progress: progress)
             return
         }
@@ -41,8 +52,13 @@ actor TranscriptionService {
     }
 
     /// Освобождает Whisper до выхода из процесса: ggml-metal падает на
-    /// assert в глобальных деструкторах, если модель ещё загружена.
-    func unloadWhisper() {
+    /// assert в глобальных деструкторах, если модель ещё загружена. Ждёт
+    /// идущую загрузку и прогоны (отменённый прогон прерывается быстро).
+    func unloadWhisper() async {
+        _ = try? await whisperLoad?.value
+        while whisperRuns > 0 {
+            await withCheckedContinuation { idleWaiters.append($0) }
+        }
         whisper = nil
     }
 
@@ -51,9 +67,25 @@ actor TranscriptionService {
         asrManager = nil
         ctcModels = nil
         if let whisper { return whisper }
-        let engine = try await WhisperEngine()
+        if let whisperLoad { return try await whisperLoad.value }
+        let load = Task { try await WhisperEngine() }
+        whisperLoad = load
+        defer { whisperLoad = nil }
+        let engine = try await load.value
         whisper = engine
         return engine
+    }
+
+    private func runWhisper<T>(_ body: () async throws -> T) async rethrows -> T {
+        whisperRuns += 1
+        defer {
+            whisperRuns -= 1
+            if whisperRuns == 0 {
+                idleWaiters.forEach { $0.resume() }
+                idleWaiters.removeAll()
+            }
+        }
+        return try await body()
     }
 
     /// Канонические написания терминов словаря, без повторов.
@@ -94,8 +126,9 @@ actor TranscriptionService {
             let whisper = try await loadWhisper()
             // Термины словаря — подсказка самому Whisper, а не только замены после.
             let vocabulary = useDictionary ? Self.vocabulary(from: glossaryURL) : []
-            let text = try await whisper.transcribe(
-                samples, languageCode: languageCode, vocabulary: vocabulary)
+            let text = try await runWhisper {
+                try await whisper.transcribe(samples, languageCode: languageCode, vocabulary: vocabulary)
+            }
             return finalize(text)
         }
         try await ensureLoaded(useDictionary: useDictionary)

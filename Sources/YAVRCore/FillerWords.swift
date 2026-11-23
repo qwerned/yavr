@@ -59,13 +59,15 @@ public enum FillerWords {
             while look < chars.count, chars[look].isWhitespace { look += 1 }
             if look < chars.count, chars[look] == "?" || chars[look] == "!" { continue }
 
-            // 3. «ER», «HM» в обычном тексте — скорее аббревиатуры.
-            if !textIsAllCaps, word.uppercased() == word { continue }
+            let before = (out + String(chars[cursor..<s])).trimmingTrailing { $0.isWhitespace }
+            let sentenceStart = before.last.map(isSentenceEnd) ?? true
+
+            // 3. «ER», «HM» в обычном тексте — скорее аббревиатуры. Однобуквенное
+            // «Э» — паразит только в начале фразы («а не Э.» — это буква).
+            if !textIsAllCaps, word.uppercased() == word, word.count > 1 || !sentenceStart { continue }
 
             out += String(chars[cursor..<s])
             changed = true
-            let trimmedOut = out.trimmingTrailing { $0.isWhitespace }
-            let sentenceStart = trimmedOut.last.map(isSentenceEnd) ?? true
 
             // 4. Пауза после паразита: «,», «…», «...» и пробелы вокруг.
             var pos = e

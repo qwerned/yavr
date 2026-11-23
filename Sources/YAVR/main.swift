@@ -34,6 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// и живой ввод в поле, если он включён.
     private var cloudAudio: AsyncStream<Data>.Continuation?
     private var cloudStart: Task<String?, Never>?
+    /// Закрытие прошлой облачной сессии: новая ждёт его, иначе запоздалый
+    /// cancel() закрыл бы уже новый сокет.
+    private var cloudCancel: Task<Void, Never>?
+    /// Модель текущей диктовки (настройку могут сменить посреди записи).
+    private var sessionModel: RecognitionModel?
     private var liveTyper: LiveTyper?
 
     /// Выход ждёт выгрузки Whisper (см. TranscriptionService.unloadWhisper).
@@ -149,17 +154,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let model = Prefs.recognitionModel
         if model.needsLocalModel {
             guard TranscriptionService.modelsInstalled(model: model) else {
+                indicator.showError("Модель не установлена — откройте настройки")
                 statusController.state = .error("Модель не установлена — откройте настройки")
                 return
             }
         }
         if model.isCloud {
             guard CloudTranscriptionService.isAvailable else {
+                indicator.showError("Нет токена Claude Code — запустите claude auth login")
                 statusController.state = .error("Нет токена Claude Code — запустите claude auth login")
                 return
             }
         }
         guard let sessionID = session.begin() else { return }
+        sessionModel = model
         do {
             if Prefs.duckAudio { ducker.duck() }
 
@@ -193,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         hotkeys.refreshConfiguration()
         if Prefs.playSounds { NSSound(named: "Pop")?.play() }
 
-        let model = Prefs.recognitionModel
+        let model = sessionModel ?? Prefs.recognitionModel
 
         if model.isCloud {
             statusController.state = .transcribing
@@ -237,11 +245,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                         self.deliver(text: text, duration: duration)
                     }
                 } catch {
-                    await CloudTranscriptionService.shared.cancel()
-                    guard self.session.finish(sessionID) else {
-                        if Task.isCancelled { _ = await typer?.finish(with: "") }
+                    // Отменённая сессия уже закрыта cancelDictation; cancel()
+                    // отсюда мог бы закрыть следующую, уже начатую диктовку.
+                    if Task.isCancelled {
+                        _ = await typer?.finish(with: "")
                         return
                     }
+                    await CloudTranscriptionService.shared.cancel()
+                    guard self.session.finish(sessionID) else { return }
                     self.transcriptionTask = nil
                     self.indicator.showError(error.localizedDescription)
                     self.statusController.state = .error(error.localizedDescription)
@@ -301,8 +312,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             transcriptionTask = nil
             session.cancel()
             indicator.hide()
-            if Prefs.recognitionModel.isCloud {
-                Task { await CloudTranscriptionService.shared.cancel() }
+            if sessionModel?.isCloud == true {
+                let previous = cloudCancel
+                cloudCancel = Task {
+                    await previous?.value
+                    await CloudTranscriptionService.shared.cancel()
+                }
             }
             refreshIdleState()
         }
@@ -388,7 +403,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             ? LiveTyper() : nil
 
         let language = Prefs.language
+        let previousCancel = cloudCancel
         cloudStart = Task {
+            await previousCancel?.value
             do {
                 try await CloudTranscriptionService.shared.startSession(
                     language: language, audio: audio
@@ -420,7 +437,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let start = cloudStart
         cloudStart = nil
         guard start != nil else { return }
-        Task {
+        let previous = cloudCancel
+        cloudCancel = Task {
+            await previous?.value
             _ = await start?.value
             await CloudTranscriptionService.shared.cancel()
         }

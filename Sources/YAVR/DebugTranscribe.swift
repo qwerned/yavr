@@ -18,11 +18,17 @@ enum DebugTranscribe {
 
         GlossaryStore.shared.reload()
         let started = Date()
-        let text = try await TranscriptionService.shared.transcribe(
-            samples: samples, glossaryURL: GlossaryStore.shared.fileURL,
-            engine: GlossaryStore.shared.replacementEngine, languageCode: language,
-            model: model, useDictionary: Prefs.useDictionary,
-            fillerLanguages: Prefs.removeFillerWords ? (language == "auto" ? ["ru", "en"] : [language]) : nil)
+        let text: String
+        do {
+            text = try await TranscriptionService.shared.transcribe(
+                samples: samples, glossaryURL: GlossaryStore.shared.fileURL,
+                engine: GlossaryStore.shared.replacementEngine, languageCode: language,
+                model: model, useDictionary: Prefs.useDictionary,
+                fillerLanguages: Prefs.removeFillerWords ? (language == "auto" ? ["ru", "en"] : [language]) : nil)
+        } catch {
+            await TranscriptionService.shared.unloadWhisper()
+            throw error
+        }
         let audio = Double(samples.count) / 16000
         await TranscriptionService.shared.unloadWhisper()
         print(text)

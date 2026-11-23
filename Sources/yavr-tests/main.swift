@@ -299,6 +299,8 @@ do {
 do {  // FillerWords
     func f(_ t: String, _ langs: [String] = ["ru", "en"]) -> String { FillerWords.remove(from: t, languages: langs) }
     expect(f("Эээ, давай сделаем так."), "Давай сделаем так.")
+    expect(f("Э, давай сделаем так."), "Давай сделаем так.", "single-letter filler")
+    expect(f("Витамин Д, а не Э."), "Витамин Д, а не Э.", "letter at the end of a sentence")
     expect(f("Давай, эм, сделаем так."), "Давай сделаем так.")
     expect(f("Ну эээ давай."), "Ну давай.")
     expect(f("Хм. Ладно."), "Ладно.")
